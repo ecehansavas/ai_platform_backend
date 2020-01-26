@@ -1,0 +1,8 @@
+# TEST CONFIGURATION BEGIN
+# FileStream(filename='kddcup99.csv', target_idx=-1, n_targets=1, cat_features=None)
+# [M0] HoeffdingTree(binary_split=False, grace_period=200, leaf_prediction='nba', max_byte_size=33554432, memory_estimate_period=1000000, nb_threshold=0, no_preprune=False, nominal_attributes=None, remove_poor_atts=False, split_confidence=1e-07, split_criterion='info_gain', stop_mem_management=False, tie_threshold=0.05)
+# EvaluatePrequential(batch_size=1, data_points_for_classification=False, max_samples=300, max_time=inf, metrics=['accuracy', 'kappa', 'kappa_t', 'kappa_m', 'true_vs_predicted'], n_wait=200, output_file='aa.csv', pretrain_size=200, restart_stream=True, show_plot=False)
+# TEST CONFIGURATION END
+id,mean_acc_[M0],current_acc_[M0],mean_kappa_[M0],current_kappa_[M0],mean_kappa_t_[M0],current_kappa_t_[M0],mean_kappa_m_[M0],current_kappa_m_[M0],true_value,predicted_value_[M0]
+200,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,1694.000000,1302.000000
+299,0.070000,0.070000,0.026586,0.026586,0.031250,0.031250,0.070000,0.070000,3443.000000,12884.000000
