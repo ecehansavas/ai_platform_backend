@@ -2,7 +2,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from .models import Job
-
+import json
 
 # Create your views here.
 def index(request):
@@ -10,9 +10,9 @@ def index(request):
 
 @csrf_exempt
 def jobs_list(request):
-    MAX_OBJECTS = 20
+    MAX_OBJECTS = 50
     jobs = Job.objects.all()[:MAX_OBJECTS]
-    data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name"
+    data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name","evaluation"
     ,"state","created_at","started_at","updated_at","finished_at"
     ,"dataset_params", "algorithm_params","results"))}
     return JsonResponse(data)
@@ -24,6 +24,7 @@ def get_job(request, id):
         "id": job.id,
         "dataset_name": job.dataset_name,
         "algorithm_name": job.algorithm_name,
+        "evaluation": job.evaluation,
         "state":job.state,
         "created_at": job.created_at,
         "started_at": job.started_at,
@@ -37,11 +38,17 @@ def get_job(request, id):
 
 @csrf_exempt
 def new_job(request):
+    print("I AM IN NEW JOOOB", flush=True)
+    
+    body_unicode = request.body.decode('utf-8')
+    body = json.loads(body_unicode)
+    print(body)
     job = Job()
-    job.dataset_name = 'kdd99'
-    job.algorithm_name= 'hoeffding-tree'
-    job.dataset_params = {}
-    job.algorithm_params = {}
+    job.dataset_name = body['dataset_name']
+    job.algorithm_name= body['algorithm_name']
+    job.evaluation = body['selected_evaluation']
+    job.dataset_params = body['dataset_parameters']
+    job.algorithm_params = body['algorithm_parameters']
     job.results ={}
     job.save()
     
