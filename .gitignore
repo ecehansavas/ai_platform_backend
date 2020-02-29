@@ -1,1 +1,7 @@
 .env
+*.pyc
+*.pdf
+result.csv
+aa.csv
+.vscode
+subdata.csv

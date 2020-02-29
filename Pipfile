@@ -13,6 +13,7 @@ psycopg2-binary = "*"
 django-cors-headers = "*"
 numpy = "*"
 scikit-multiflow = "*"
+pandas = "*"
 
 [requires]
 python_version = "3.6"
