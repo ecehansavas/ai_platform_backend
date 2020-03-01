@@ -80,7 +80,7 @@ def runAlgorithm(dataset, algo_name, dataset_params, algo_params, evaluation):
     stream.prepare_for_use()
 
     if algo_name=="hoeffding_tree":
-        run_hoeffdingtree(stream, evaluation)
+        run_hoeffdingtree(stream, algo_params, evaluation)
         with open("result.csv") as file: 
             # read and filter the comment lines
             reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
@@ -90,7 +90,7 @@ def runAlgorithm(dataset, algo_name, dataset_params, algo_params, evaluation):
             out = json.dumps( [ row for row in reader ] )  
             
     elif algo_name =="knn":
-        knn_result = run_knn(stream, evaluation)
+        knn_result = run_knn(stream, algo_params, evaluation)
         with open("knn.csv") as file: 
             # read and filter the comment lines
             reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
@@ -100,19 +100,19 @@ def runAlgorithm(dataset, algo_name, dataset_params, algo_params, evaluation):
             out = json.dumps( [ row for row in reader ] )  
 
     elif algo_name =="k_means":
-        kmeans_result = run_kmeans(used_dataset)
-
+        kmeans_result = run_kmeans(used_dataset,algo_params)
+        out= pd.Series(kmeans_result).to_json(orient='values')
     
     elif algo_name == "d3":
-        d3_result = run_d3(used_dataset)
+        d3_result = run_d3(used_dataset,algo_params)
         out = json.dumps( d3_result)
         # if evaluation=="holdout": 
         # else: 
 
     elif algo_name=="denstream":
         print("run denstream run")
-        denstream = run_denstream(used_dataset)
-        out = json.dumps(denstream)
+        denstream = run_denstream(used_dataset,algo_params)
+        out = json.dumps(denstream) # TODO: duzelt
 
     elif algo_name=="clustream":
         print("insert clustream ")
@@ -123,59 +123,67 @@ def runAlgorithm(dataset, algo_name, dataset_params, algo_params, evaluation):
     return out
 
 
-def run_d3(dataset_name):
-    process = subprocess.run(['python', "ai_core/D3.py", dataset_name, "100", "0.1", "0.7"], check=True, stdout=PIPE)
+def run_d3(dataset_name,algo_params):
+    process = subprocess.run(['python', "ai_core/D3.py", dataset_name,algo_params['w'], algo_params['rho'], algo_params['auc']], check=True, stdout=PIPE)
     results = {}
     results["output"] = process.stdout.decode("utf-8")
     return results
 
-def run_denstream(dataset_name):
+def run_denstream(dataset_name,algo_params):
     data = pd.read_csv(dataset_name)
     print( data.values)
-    print("end of data")
-    #  denstream = DenStream(eps=0.3, lambd=0.1, beta=0.5, mu=11)
-    denstream = DenStream(eps=0.3, lambd=0.1, beta=0.5, mu=11).fit_predict(data.values)
-    return result
+    denstream = DenStream(eps=pd.to_numeric(algo_params['epsilon']), lambd=pd.to_numeric(algo_params['lambda']), beta=pd.to_numeric(algo_params['beta']), mu=pd.to_numeric(algo_params['mu'])).fit_predict(data.values)
+    return denstream
 
 
-def run_hoeffdingtree(stream, evaluation):
+def run_hoeffdingtree(stream,algo_params, evaluation):
     ht = HoeffdingTree()
     if evaluation=="holdout": 
         evaluator = EvaluateHoldout(show_plot=False,
-                                    max_samples=400,
+                                    pretrain_size=pd.to_numeric(algo_params['pretrain_size']),
+                                    max_samples=pd.to_numeric(algo_params['max_sample']),
                                     metrics=['accuracy', 'kappa','kappa_t'],
-                                    restart_stream=False,
+                                    batch_size = pd.to_numeric(algo_params['batch_size']),
+                                    restart_stream=algo_params['restart_stream'],
                                     output_file='result.csv')
     else:
         evaluator = EvaluatePrequential(show_plot=False,
-                                        pretrain_size=200,
-                                        max_samples=300,
+                                        max_samples=pd.to_numeric(algo_params['max_sample']),
                                         metrics=['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file='result.csv')
 
     evaluator.evaluate(stream=stream, model=ht)
 
-def run_knn(stream, evaluation):
-    knn = SAMKNN(n_neighbors=5, weighting='distance', max_window_size=1000, stm_size_option='maxACCApprox',use_ltm=False)
+def run_knn(stream,algo_params, evaluation):
+    knn = SAMKNN(n_neighbors=pd.to_numeric(algo_params['neighbors']), weighting='distance', 
+          max_window_size=pd.to_numeric(algo_params['max_window_size']), stm_size_option='maxACCApprox',use_ltm=False)
      
     if evaluation=="holdout":
-        evaluator = EvaluateHoldout(pretrain_size=0, 
-                                        max_samples=200, 
-                                        batch_size=1, 
-                                        n_wait=100, 
-                                        max_time=100, 
+        evaluator = EvaluateHoldout(pretrain_size=pd.to_numeric(algo_params['pretrain_size']), 
+                                        max_samples=pd.to_numeric(algo_params['max_sample']), 
+                                        batch_size=pd.to_numeric(algo_params['batch_size']), 
+                                        n_wait=pd.to_numeric(algo_params['n_wait']), 
+                                        max_time=pd.to_numeric(algo_params['max_time']), 
                                         output_file='knn.csv', 
                                         metrics=['accuracy', 'kappa_t'])
     else:      
-        evaluator = EvaluatePrequential(pretrain_size=0, 
-                                        max_samples=200, 
-                                        batch_size=1, 
-                                        n_wait=100, 
-                                        max_time=100, 
+        evaluator = EvaluatePrequential(pretrain_size=pd.to_numeric(algo_params['pretrain_size']), 
+                                        max_samples=pd.to_numeric(algo_params['max_sample']), 
+                                        batch_size=pd.to_numeric(algo_params['batch_size']), 
+                                        n_wait=pd.to_numeric(algo_params['n_wait']), 
+                                        max_time=pd.to_numeric(algo_params['max_time']), 
                                         output_file='knn.csv',  
                                         metrics=['accuracy', 'kappa_t'])
 
     evaluator.evaluate(stream=stream, model=knn)
+
+def run_kmeans(dataset_name, algo_params):
+    data = pd.read_csv(dataset_name)
+    kmeans = KMeans(n_clusters=pd.to_numeric(algo_params['n_cluster']), init='k-means++', 
+    max_iter=pd.to_numeric(algo_params['max_iter']), n_init=pd.to_numeric(algo_params['n_init']),
+             random_state=pd.to_numeric(algo_params['random_state']))
+    return kmeans.fit_predict(data.values)
+    
 
 if __name__ == "__main__":
     main()
