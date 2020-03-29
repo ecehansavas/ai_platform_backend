@@ -4,6 +4,7 @@ from skmultiflow.lazy.sam_knn import SAMKNN
 from skmultiflow.evaluation import EvaluatePrequential
 from skmultiflow.evaluation import EvaluateHoldout
 from sklearn.cluster import KMeans
+import numpy as np
 import psycopg2
 import os
 import time
@@ -72,6 +73,8 @@ def runAlgorithm(dataset, algo_name, dataset_params, algo_params, evaluation):
         print(sub_data)
         sub_data.to_csv("subdata.csv")
         used_dataset="subdata.csv"
+        median_res = np.median(sub_data)
+        print("median of data "+median_res)
 
     else: 
         used_dataset=dataset+".csv"
@@ -148,7 +151,6 @@ def run_hoeffdingtree(stream,algo_params, evaluation):
                                     output_file='result.csv')
     else:
         evaluator = EvaluatePrequential(show_plot=False,
-                                        max_samples=pd.to_numeric(algo_params['max_sample']),
                                         metrics=['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file='result.csv')
 
