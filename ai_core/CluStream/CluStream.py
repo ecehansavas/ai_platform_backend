@@ -1,7 +1,7 @@
 from sklearn.base import BaseEstimator, ClusterMixin
 from sklearn.utils import check_array
 from sklearn.cluster import KMeans
-from sklearn.streams.model import MicroCluster as model
+import MicroCluster as model
 from scipy.spatial import distance
 import math
 import numpy as np
