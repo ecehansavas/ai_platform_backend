@@ -18,4 +18,5 @@ class Job(models.Model):
     finished_at = models.DateTimeField('date finished', null=True)
     dataset_params = JSONField()
     algorithm_params = JSONField()
+    evaluation_params = JSONField(default=dict)
     results = JSONField()

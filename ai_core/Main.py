@@ -34,7 +34,7 @@ def main():
         cur = conn.cursor()
 
         # send a SQL query to see if there's a task in queue
-        cur.execute("SELECT id, dataset_name, algorithm_name, evaluation, state, created_at, started_at, updated_at, finished_at, dataset_params, algorithm_params  FROM api_job WHERE state='queued' ORDER BY created_at LIMIT 1")
+        cur.execute("SELECT id, dataset_name, algorithm_name, evaluation, state, created_at, started_at, updated_at, finished_at, dataset_params, algorithm_params, evaluation_params FROM api_job WHERE state='queued' ORDER BY created_at LIMIT 1")
         result = cur.fetchone()
 
         # if so, update the task to in progres...
@@ -43,14 +43,15 @@ def main():
             dataset_name  = result [1]
             dataset_params = result[9]
             algorithm_name = result[2]
-            algorithm_params= result[10]          
-            evaluation= result[3]
+            algorithm_params = result[10]          
+            evaluation = result[3]
+            eval_params = result[11]
 
             cur.execute("UPDATE api_job SET state='in_progress', started_at=(%s) WHERE id=%s",[datetime.now(), id])
             conn.commit()
 
             # run the evaluation with the given dataset, params, algo, etc.
-            results = prepareForRun(dataset_name, algorithm_name, dataset_params, algorithm_params,evaluation)
+            results = prepareForRun(dataset_name, algorithm_name, dataset_params, algorithm_params,evaluation, eval_params)
 
             # update  json results
             cur.execute("UPDATE api_job SET results=(%s) WHERE id=%s",([results,id]))
@@ -70,25 +71,26 @@ def main():
     exit(0)
 
 
-def prepareForRun(dataset, algo_name, dataset_params, algo_params, evaluation):
+def prepareForRun(dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
     if('noise_percentage' in dataset_params): # generated 
+        print('Generatordeyim')
         if('n_drift_features' in dataset_params): #hyperplane
             print("hyperplane generator")
-            stream = HyperplaneGenerator(random_state=None, n_features=pd.to_numeric(dataset_params['n_features']), 
-                                n_drift_features=pd.to_numeric(dataset_params['n_drift_features']), 
-                                mag_change=pd.to_numeric(dataset_params['mag_change']), 
-                                noise_percentage=pd.to_numeric(dataset_params['noise_percentage']), 
-                                sigma_percentage=pd.to_numeric(dataset_params['sigma_percentage']))
+            stream = HyperplaneGenerator(random_state=None, n_features=pd.to_numeric(eval_params['n_features']), 
+                                n_drift_features=pd.to_numeric(eval_params['n_drift_features']), 
+                                mag_change=pd.to_numeric(eval_params['mag_change']), 
+                                noise_percentage=pd.to_numeric(eval_params['noise_percentage']), 
+                                sigma_percentage=pd.to_numeric(eval_params['sigma_percentage']))
         else: #sea
             print("sea generator")
             stream = SEAGenerator(classification_function=0, random_state=None, balance_classes=False, 
-                    noise_percentage=pd.to_numeric(dataset_params['noise_percentage']))
+                    noise_percentage=pd.to_numeric(eval_params['noise_percentage']))
     else: 
         used_dataset = prepareDataset(dataset, dataset_params)
         stream = FileStream(used_dataset)
     stream.prepare_for_use()
 
-    if algo_name=="hoeffding_tree":
+    if algo_name == "hoeffding_tree":
         run_hoeffdingtree(stream, algo_params, evaluation)
         with open("result.csv") as file: 
             # read and filter the comment lines
@@ -108,9 +110,9 @@ def prepareForRun(dataset, algo_name, dataset_params, algo_params, evaluation):
             # Parse the CSV into JSON  
             out = json.dumps( [ row for row in reader ] )  
 
-    elif algo_name =="k_means":
+    elif algo_name == "k_means":
         kmeans_result = run_kmeans(used_dataset,algo_params)
-        out= pd.Series(kmeans_result).to_json(orient='values')
+        out = pd.Series(kmeans_result).to_json(orient='values')
     
     elif algo_name == "d3":
         d3_result = run_d3(used_dataset,algo_params)
@@ -118,18 +120,18 @@ def prepareForRun(dataset, algo_name, dataset_params, algo_params, evaluation):
         # if evaluation=="holdout": 
         # else: 
 
-    elif algo_name=="denstream":
+    elif algo_name == "denstream":
         print("run denstream run")
         denstream = run_denstream(used_dataset,algo_params)
         out = json.dumps(denstream) # TODO: duzelt
 
-    elif algo_name=="clustream":
+    elif algo_name == "clustream":
         print("insert clustream ")
         clustream = run_clustream(used_dataset, algo_params)
         out = json.dumps(clustream) # TODO: Duzelt
 
     #https://scikit-multiflow.github.io/scikit-multiflow/api/generated/skmultiflow.anomaly_detection.HalfSpaceTrees.html#skmultiflow.anomaly_detection.HalfSpaceTrees
-    elif algo_name=="half_space_tree":
+    elif algo_name == "half_space_tree":
         run_halfspacetree(stream, algo_params, evaluation)
         with open("result.csv") as file: 
             # read and filter the comment lines
@@ -184,11 +186,9 @@ def run_hoeffdingtree(stream,algo_params, evaluation):
     ht = HoeffdingTree()
     if evaluation=="holdout": 
         evaluator = EvaluateHoldout(show_plot=False,
-                                    pretrain_size=pd.to_numeric(algo_params['pretrain_size']),
                                     max_samples=pd.to_numeric(algo_params['max_sample']),
                                     metrics=['accuracy', 'kappa','kappa_t'],
                                     batch_size = pd.to_numeric(algo_params['batch_size']),
-                                    restart_stream=algo_params['restart_stream'],
                                     output_file='result.csv')
     else:
         evaluator = EvaluatePrequential(show_plot=False,
@@ -209,11 +209,9 @@ def run_halfspacetree(stream, algo_params, evaluation):
                         random_state=None)
     if evaluation=="holdout": 
         evaluator = EvaluateHoldout(show_plot=False,
-                                    pretrain_size=pd.to_numeric(algo_params['pretrain_size']),
                                     max_samples=pd.to_numeric(algo_params['max_sample']),
                                     metrics=['accuracy', 'kappa','kappa_t'],
                                     batch_size = pd.to_numeric(algo_params['batch_size']),
-                                    restart_stream=algo_params['restart_stream'],
                                     output_file='result.csv')
     else:
         evaluator = EvaluatePrequential(show_plot=False,
@@ -228,19 +226,16 @@ def run_knn(stream,algo_params, evaluation):
           max_window_size=pd.to_numeric(algo_params['max_window_size']), stm_size_option='maxACCApprox',use_ltm=False)
      
     if evaluation=="holdout":
-        evaluator = EvaluateHoldout(pretrain_size=pd.to_numeric(algo_params['pretrain_size']), 
-                                        max_samples=pd.to_numeric(algo_params['max_sample']), 
+        evaluator = EvaluateHoldout( max_samples=pd.to_numeric(algo_params['max_sample']), 
                                         batch_size=pd.to_numeric(algo_params['batch_size']), 
                                         n_wait=pd.to_numeric(algo_params['n_wait']), 
-                                        max_time=pd.to_numeric(algo_params['max_time']), 
                                         output_file='knn.csv', 
                                         metrics=['accuracy', 'kappa_t'])
     else:      
         evaluator = EvaluatePrequential(pretrain_size=pd.to_numeric(algo_params['pretrain_size']), 
                                         max_samples=pd.to_numeric(algo_params['max_sample']), 
                                         batch_size=pd.to_numeric(algo_params['batch_size']), 
-                                        n_wait=pd.to_numeric(algo_params['n_wait']), 
-                                        max_time=pd.to_numeric(algo_params['max_time']), 
+                                        n_wait=pd.to_numeric(algo_params['n_wait']),  
                                         output_file='knn.csv',  
                                         metrics=['accuracy', 'kappa_t'])
 
