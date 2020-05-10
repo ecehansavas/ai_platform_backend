@@ -23,4 +23,5 @@ urlpatterns = [
     path('api/jobs', apiviews.jobs_list),
     path('api/jobs/<id>', apiviews.get_job),
     path('api/new_job', apiviews.new_job),
+    path('api/delete_job/<id>', apiviews.delete_job),
 ]

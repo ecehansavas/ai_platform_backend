@@ -55,3 +55,9 @@ def new_job(request):
     job.save()
     
     return HttpResponse("new job")
+
+@csrf_exempt
+def delete_job(request,id):
+    job = get_object_or_404(Job, pk=id)
+    job.delete()
+    return HttpResponse(status=202) 
