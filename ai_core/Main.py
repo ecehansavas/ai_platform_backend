@@ -10,6 +10,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 import psycopg2
 import os
+import os.path
 import random
 import time
 import csv
@@ -61,7 +62,7 @@ def main():
             # update the results on the way, mark the task finished after done
             cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
             conn.commit()
-            if(os.path.isFile(getFile(id))):
+            if(os.path.isfile(getFile(id))):
                 os.remove(getFile(id))
         else:
             print("Nothing to do...")
@@ -119,7 +120,11 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
 
     elif algo_name == "k_means":
         kmeans_result = run_kmeans(used_dataset,algo_params)
-        out = pd.Series(kmeans_result).to_json(orient='values')
+        data = pd.read_csv(dataset+".csv", header=None, names=["duration", "src_bytes", "dst_bytes"])
+        sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
+        res = sub_data.merge(pd.Series(kmeans_result).rename('cluster'), left_index=True, right_index=True)
+        out = res.to_json(orient='records')
+        
     
     elif algo_name == "d3":
         d3_result = run_d3(used_dataset,algo_params)
@@ -157,8 +162,7 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
 #TODO: data histogrami ekle
 def  prepareDataset(dataset, dataset_params):
     if('start_value' in dataset_params and 'stop_value'in dataset_params):
-        data = pd.read_csv(dataset+".csv")
-
+        data = pd.read_csv(dataset+".csv", header=None)
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
         print(sub_data)
         sub_data.to_csv("subdata.csv")
@@ -176,7 +180,7 @@ def run_d3(dataset_name,algo_params):
 
 #TODO: calismiyor
 def run_denstream(dataset_name,algo_params):
-    data = pd.read_csv(dataset_name)
+    data = pd.read_csv(dataset_name, header=None)
     print( data.values)
     denstream = DenStream(eps = float(algo_params['epsilon']), 
                           lambd = float(algo_params['lambda']), 
@@ -186,7 +190,7 @@ def run_denstream(dataset_name,algo_params):
 
 #TODO: calismiyor
 def run_clustream(dataset, algorithm_params):
-    data = pd.read_csv(dataset)
+    data = pd.read_csv(dataset, header=None)
     print(data.values)
     clustream = CluStream(nb_initial_points = 1000, 
                         time_window = 1000, 
