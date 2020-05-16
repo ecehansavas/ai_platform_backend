@@ -13,6 +13,7 @@ from skmultiflow.bayes.naive_bayes import NaiveBayes
 from skmultiflow.drift_detection.eddm import EDDM
 import time
 import sys
+import json
 
 # Drift Detector
 # S: Source (Old Data)
@@ -188,19 +189,23 @@ ddd_acc2 = window_average(stream_record, a)
 
 # In[ ]:
 
+# TODO: Burayı kullan. Accuracy plot burası. data streamı 30 a bolerek accuracy plot ettiriyor
 
 x = np.linspace(0, 100, len(ddd_acc2), endpoint=True)
 
 f = plt.figure()
 plt.plot(x, ddd_acc2, 'r', label='D3', marker="*") 
 
+
+results = []
+results.insert(0,x.tolist()) 
+results.insert(1, ddd_acc2)
+print("<RESULTS_START>"+json.dumps(results)+"<RESULTS_END>")
+
 plt.xlabel('Percentage of data', fontsize=10)
 plt.ylabel('Accuracy', fontsize=10)
 plt.grid(True)
 plt.legend(loc='lower left')
-
-plt.show()
-
 f.savefig("preq.pdf", bbox_inches='tight')
 
 

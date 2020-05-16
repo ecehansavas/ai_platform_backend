@@ -4,6 +4,7 @@ from skmultiflow.data import HyperplaneGenerator
 from skmultiflow.trees import HoeffdingTree
 from skmultiflow.anomaly_detection import HalfSpaceTrees
 from skmultiflow.lazy.sam_knn import SAMKNN
+from skmultiflow.lazy.knn import KNN
 from skmultiflow.evaluation import EvaluatePrequential
 from skmultiflow.evaluation import EvaluateHoldout
 from sklearn.cluster import KMeans
@@ -15,6 +16,7 @@ import random
 import time
 import csv
 import json
+import re
 import subprocess
 from subprocess import PIPE
 import pandas as pd
@@ -78,21 +80,20 @@ def main():
 
 def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
     if('noise_percentage' in dataset_params): # generated 
-        print('Generatordeyim')
         if('n_drift_features' in dataset_params): #hyperplane
             print("hyperplane generator")
             stream = HyperplaneGenerator(random_state = None, 
-                                n_features = int(eval_params['n_features']), 
-                                n_drift_features = int(eval_params['n_drift_features']), 
-                                mag_change = float(eval_params['mag_change']), 
-                                noise_percentage = float(eval_params['noise_percentage']), 
-                                sigma_percentage = float(eval_params['sigma_percentage']))
+                                n_features = int(dataset_params['n_features']), 
+                                n_drift_features = int(dataset_params['n_drift_features']), 
+                                mag_change = float(dataset_params['mag_change']), 
+                                noise_percentage = float(dataset_params['noise_percentage']), 
+                                sigma_percentage = float(dataset_params['sigma_percentage']))
         else: #sea
             print("sea generator")
             stream = SEAGenerator(classification_function = 0, 
                                     random_state = None, 
                                     balance_classes = False, 
-                                    noise_percentage = float(eval_params['noise_percentage']))
+                                    noise_percentage = float(dataset_params['noise_percentage']))
     else: 
         used_dataset = prepareDataset(dataset, dataset_params)
         stream = FileStream(used_dataset)
@@ -101,36 +102,45 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
     if algo_name == "hoeffding_tree":
         run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
+            
             # read and filter the comment lines
             reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
+            
             # skip header row
             next(reader)
+            
             # Parse the CSV into JSON  
             out = json.dumps( [ row for row in reader ] )  
             
-    elif algo_name =="knn":
-        knn_result = run_knn(getFile(id),stream, algo_params, evaluation, eval_params)
+    elif algo_name =="samknn":
+        samknn_result = run_samknn(getFile(id),stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
+            
             # read and filter the comment lines
             reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
+
             # skip header row
             next(reader)
+            
             # Parse the CSV into JSON  
             out = json.dumps( [ row for row in reader ] )  
+    
+    elif algo_name =="knn":
+        knn_result = run_knn(getFile(id),stream, algo_params, evaluation, eval_params)
+       
+        out = (pd.Series(knn_result)).to_json(orient='records')
 
+    # TODO: header adlarini duzelt sadece kddcup icin boyle
     elif algo_name == "k_means":
         kmeans_result = run_kmeans(used_dataset,algo_params)
         data = pd.read_csv(dataset+".csv", header=None, names=["duration", "src_bytes", "dst_bytes"])
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
         res = sub_data.merge(pd.Series(kmeans_result).rename('cluster'), left_index=True, right_index=True)
         out = res.to_json(orient='records')
-        
     
     elif algo_name == "d3":
         d3_result = run_d3(used_dataset,algo_params)
-        out = json.dumps( d3_result)
-        # if evaluation=="holdout": 
-        # else: 
+        out = json.dumps( d3_result) 
 
     elif algo_name == "denstream":
         print("run denstream run")
@@ -173,10 +183,30 @@ def  prepareDataset(dataset, dataset_params):
 
 
 def run_d3(dataset_name,algo_params):
-    process = subprocess.run(['python', "ai_core/D3.py", dataset_name,algo_params['w'], algo_params['rho'], algo_params['auc']], check=True, stdout=PIPE)
-    results = {}
-    results["output"] = process.stdout.decode("utf-8")
+    try:
+        process = subprocess.run(['python', "ai_core/D3.py", dataset_name, str(algo_params['w']), str(algo_params['rho']), str(algo_params['auc'])], check=True, stdout=PIPE)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+    
+    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
+    search_results = pattern.search(process.stdout.decode("utf-8"))
+    d3_results_json= search_results.group(1) 
+    d3_results = json.loads(d3_results_json)
+
+    x_array = d3_results[0]
+    acc_array = d3_results[1]
+
+    results = []
+
+    for i in range(0,len(x_array)):
+        item = {}
+        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
+        item["acc"] = float("{:.2f}".format(acc_array[i]))
+        results.insert(i,item)
+    
     return results
+  
+
 
 #TODO: calismiyor
 def run_denstream(dataset_name,algo_params):
@@ -266,38 +296,52 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
     #         " max sample:" + int(eval_params['max_sample']) + 
     #         " batch size:" + int(eval_params['batch_size']) +
     #         "n_wait:" + int(eval_params['n_wait']))
-    print("bitti half space")
 
+
+
+# NOT: knn sadece prequentialla calisir
+def run_samknn(resultFile, stream,algo_params, evaluation, eval_params):
+    classifier = SAMKNN(n_neighbors=int(algo_params['neighbors']), 
+                        weighting='distance', 
+                        max_window_size=int(algo_params['max_window_size']), 
+                        stm_size_option='maxACCApprox',
+                        use_ltm=False)
+
+       
+    evaluator = EvaluatePrequential(pretrain_size = int(eval_params['pretrain_size']), 
+                                        max_samples=int(eval_params['max_sample']), 
+                                        batch_size= int(eval_params['batch_size']),
+                                        n_wait = int(eval_params['n_wait']), 
+                                        max_time=1000,
+                                        output_file=resultFile, 
+                                        metrics=['accuracy', 'kappa'])
+   
+    evaluator.evaluate(stream=stream, model=classifier)
 
 
 def run_knn(resultFile, stream,algo_params, evaluation, eval_params):
-    knn = SAMKNN(n_neighbors = int(algo_params['neighbors']), 
-                weighting = str('distance'), 
-                max_window_size = int(algo_params['max_window_size']), 
-                stm_size_option = str('maxACCApprox'),
-                use_ltm = bool(False))
-     
-    if evaluation=="holdout":
-        evaluator = EvaluateHoldout(max_samples = int(eval_params['max_sample']), 
-                                    batch_size = int(eval_params['batch_size']), 
-                                    n_wait = int(eval_params['n_wait']), 
-                                    output_file = resultFile, 
-                                    metrics = ['accuracy', 'kappa_t'])
-    else:      
-        evaluator = EvaluatePrequential(pretrain_size = int(eval_params['pretrain_size']), 
-                                        max_samples = int(eval_params['max_sample']), 
-                                        batch_size = int(eval_params['batch_size']), 
-                                        n_wait = int(eval_params['n_wait']),  
-                                        output_file = resultFile,  
-                                        metrics = ['accuracy', 'kappa_t'])
-    print(type(knn))
+    knn = KNN(n_neighbors=int(algo_params['neighbors']), 
+                        max_window_size=int(algo_params['max_window_size']), 
+                        leaf_size=int(algo_params['leaf_size']),
+                        nominal_attributes=None)
 
-    # print("evaluate with pretrain size:" + int(eval_params['pretrain_size']) + 
-    #         " max sample:" + int(eval_params['max_sample']) + 
-    #         " batch size:" + int(eval_params['batch_size']) +
-    #         "n_wait:" + int(eval_params['n_wait']))
+    X, y = stream.next_sample(int(algo_params['pretrain_size']))
+   
+    knn.partial_fit(X, y) 
 
-    evaluator.evaluate(stream=stream, model=knn)
+    n_samples = 0
+    corrects = 0
+    while n_samples < 5000:
+        X, y = stream.next_sample()
+        my_pred = knn.predict(X)
+        if y[0] == my_pred[0]:
+            corrects += 1
+        knn = knn.partial_fit(X, y)
+        n_samples += 1
+    print("KNN's corrects: "+ corrects, +"  sample: " +  n_samples)   
+
+    return corrects 
+
 
 def run_kmeans(dataset_name, algo_params):
     data = pd.read_csv(dataset_name)
