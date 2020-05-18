@@ -183,13 +183,11 @@ def window_average(x,N):
 # In[8]:
 
 
-a=int(len(df)/30)
+a=int(len(df)/25)
 ddd_acc2 = window_average(stream_record, a)
 
 
 # In[ ]:
-
-# TODO: Burayı kullan. Accuracy plot burası. data streamı 30 a bolerek accuracy plot ettiriyor
 
 x = np.linspace(0, 100, len(ddd_acc2), endpoint=True)
 

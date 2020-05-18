@@ -79,6 +79,7 @@ def main():
 
 
 def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
+    headers = ""
     if('noise_percentage' in dataset_params): # generated 
         if('n_drift_features' in dataset_params): #hyperplane
             print("hyperplane generator")
@@ -96,8 +97,11 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
                                     noise_percentage = float(dataset_params['noise_percentage']))
     else: 
         used_dataset = prepareDataset(dataset, dataset_params)
+        headers = (pd.read_csv(used_dataset)).columns.tolist()
+       
         stream = FileStream(used_dataset)
     stream.prepare_for_use()
+    
 
     if algo_name == "hoeffding_tree":
         run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
@@ -126,14 +130,18 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
             out = json.dumps( [ row for row in reader ] )  
     
     elif algo_name =="knn":
-        knn_result = run_knn(getFile(id),stream, algo_params, evaluation, eval_params)
-       
-        out = (pd.Series(knn_result)).to_json(orient='records')
+        sample_size = 500
+        if('start_value' in dataset_params): 
+            if('stop_value' in dataset): 
+                sample_size = int(dataset_params['stop_value']) - int(dataset_params['start_value'])
+            
+        knn_result = run_knn(getFile(id),stream, headers, sample_size, algo_params, evaluation, eval_params) 
+        out = knn_result.to_json(orient='records')
+        
 
-    # TODO: header adlarini duzelt sadece kddcup icin boyle
     elif algo_name == "k_means":
         kmeans_result = run_kmeans(used_dataset,algo_params)
-        data = pd.read_csv(dataset+".csv", header=None, names=["duration", "src_bytes", "dst_bytes"])
+        data = pd.read_csv(dataset+".csv")
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
         res = sub_data.merge(pd.Series(kmeans_result).rename('cluster'), left_index=True, right_index=True)
         out = res.to_json(orient='records')
@@ -145,12 +153,12 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
     elif algo_name == "denstream":
         print("run denstream run")
         denstream = run_denstream(used_dataset,algo_params)
-        out = json.dumps(denstream) # TODO: duzelt
+        out = json.dumps(denstream) 
 
     elif algo_name == "clustream":
         print("insert clustream ")
         clustream = run_clustream(used_dataset, algo_params)
-        out = json.dumps(clustream) # TODO: Duzelt
+        out = json.dumps(clustream)
 
     #https://scikit-multiflow.github.io/scikit-multiflow/api/generated/skmultiflow.anomaly_detection.HalfSpaceTrees.html#skmultiflow.anomaly_detection.HalfSpaceTrees
     elif algo_name == "half_space_tree":
@@ -168,11 +176,10 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
 
     return out
 
-#TODO: median mean falan ekle
-#TODO: data histogrami ekle
+
 def  prepareDataset(dataset, dataset_params):
     if('start_value' in dataset_params and 'stop_value'in dataset_params):
-        data = pd.read_csv(dataset+".csv", header=None)
+        data = pd.read_csv(dataset+".csv")
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
         print(sub_data)
         sub_data.to_csv("subdata.csv")
@@ -204,8 +211,7 @@ def run_d3(dataset_name,algo_params):
         item["acc"] = float("{:.2f}".format(acc_array[i]))
         results.insert(i,item)
     
-    return results
-  
+    return results  
 
 
 #TODO: calismiyor
@@ -299,7 +305,7 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
 
 
 
-# NOT: knn sadece prequentialla calisir
+# NOT: samknn sadece prequentialla calisir
 def run_samknn(resultFile, stream,algo_params, evaluation, eval_params):
     classifier = SAMKNN(n_neighbors=int(algo_params['neighbors']), 
                         weighting='distance', 
@@ -319,28 +325,48 @@ def run_samknn(resultFile, stream,algo_params, evaluation, eval_params):
     evaluator.evaluate(stream=stream, model=classifier)
 
 
-def run_knn(resultFile, stream,algo_params, evaluation, eval_params):
+def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, eval_params):
+
+    X, y = stream.next_sample(int(algo_params['pretrain_size']))
+
     knn = KNN(n_neighbors=int(algo_params['neighbors']), 
                         max_window_size=int(algo_params['max_window_size']), 
                         leaf_size=int(algo_params['leaf_size']),
                         nominal_attributes=None)
-
-    X, y = stream.next_sample(int(algo_params['pretrain_size']))
    
     knn.partial_fit(X, y) 
 
     n_samples = 0
     corrects = 0
-    while n_samples < 5000:
+    
+ 
+    clusters=[]
+    correctness=[]
+
+    while n_samples < sample_size:
         X, y = stream.next_sample()
         my_pred = knn.predict(X)
+
+        clusters.insert(n_samples,my_pred[0])
+
         if y[0] == my_pred[0]:
             corrects += 1
+            correctness.insert(n_samples, 1)
+        else:
+            correctness.insert(n_samples, 0)
+       
         knn = knn.partial_fit(X, y)
         n_samples += 1
-    print("KNN's corrects: "+ corrects, +"  sample: " +  n_samples)   
 
-    return corrects 
+    # TODO: generatorse get all samples calismiyor
+    X,y  = stream.get_all_samples()
+    trained_samples = X[int(algo_params['pretrain_size']) : int(algo_params['pretrain_size'])+sample_size]
+
+    result = np.concatenate((trained_samples, np.array(clusters)[:,None]), axis=1)
+   
+    result = pd.DataFrame(data=result, columns=headers)
+ 
+    return result 
 
 
 def run_kmeans(dataset_name, algo_params):
