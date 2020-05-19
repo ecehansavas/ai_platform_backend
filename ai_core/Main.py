@@ -27,7 +27,8 @@ from datetime import datetime
 # https://github.com/narjes23/Clustream-algorithm
 # https://github.com/ogozuacik/d3-discriminative-drift-detector-concept-drift/ 
 # https://github.com/issamemari/DenStream
-
+# https://scikit-multiflow.github.io/scikit-multiflow/api/generated/skmultiflow.anomaly_detection.HalfSpaceTrees.html#skmultiflow.anomaly_detection.HalfSpaceTrees
+   
 
 
 def main():
@@ -82,7 +83,6 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
     headers = ""
     if('noise_percentage' in dataset_params): # generated 
         if('n_drift_features' in dataset_params): #hyperplane
-            print("hyperplane generator")
             stream = HyperplaneGenerator(random_state = None, 
                                 n_features = int(dataset_params['n_features']), 
                                 n_drift_features = int(dataset_params['n_drift_features']), 
@@ -90,7 +90,6 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
                                 noise_percentage = float(dataset_params['noise_percentage']), 
                                 sigma_percentage = float(dataset_params['sigma_percentage']))
         else: #sea
-            print("sea generator")
             stream = SEAGenerator(classification_function = 0, 
                                     random_state = None, 
                                     balance_classes = False, 
@@ -130,14 +129,13 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
             out = json.dumps( [ row for row in reader ] )  
     
     elif algo_name =="knn":
-        sample_size = 500
+        sample_size = 300
         if('start_value' in dataset_params): 
             if('stop_value' in dataset): 
                 sample_size = int(dataset_params['stop_value']) - int(dataset_params['start_value'])
             
         knn_result = run_knn(getFile(id),stream, headers, sample_size, algo_params, evaluation, eval_params) 
-        out = knn_result.to_json(orient='records')
-        
+        out = knn_result.to_json(orient='records')       
 
     elif algo_name == "k_means":
         kmeans_result = run_kmeans(used_dataset,algo_params)
@@ -160,7 +158,6 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
         clustream = run_clustream(used_dataset, algo_params)
         out = json.dumps(clustream)
 
-    #https://scikit-multiflow.github.io/scikit-multiflow/api/generated/skmultiflow.anomaly_detection.HalfSpaceTrees.html#skmultiflow.anomaly_detection.HalfSpaceTrees
     elif algo_name == "half_space_tree":
         run_halfspacetree(getFile(id), stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
@@ -181,7 +178,6 @@ def  prepareDataset(dataset, dataset_params):
     if('start_value' in dataset_params and 'stop_value'in dataset_params):
         data = pd.read_csv(dataset+".csv")
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
-        print(sub_data)
         sub_data.to_csv("subdata.csv")
         used_dataset="subdata.csv"
     else: 
@@ -265,16 +261,15 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                                         metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file = resultFile)
     
-    # print("evaluate with pretrain size:" + int(eval_params['pretrain_size']) + 
-    #         " max sample:" + int(eval_params['max_sample']) + 
-    #         " batch size:" + int(eval_params['batch_size']) +
+    # print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
+    #         " max sample:" + str(eval_params['max_sample']) + 
+    #         " batch size:" + str(eval_params['batch_size']) +
     #         "n_wait:" + str(eval_params['n_wait']))
 
     evaluator.evaluate(stream=stream, model=ht)
 
 #TODO: bunun sonuclarini alamadik henuz.
 def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
-    print("halfspace")
     hst = HalfSpaceTrees(n_features = int(algo_params['n_features']), 
                         window_size = int(algo_params['window_size']),
                         depth = int(algo_params['depth']),
@@ -298,10 +293,10 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
                                         metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file = resultFile)
     
-    # print("evaluate with pretrain size:" + int(eval_params['pretrain_size']) + 
-    #         " max sample:" + int(eval_params['max_sample']) + 
-    #         " batch size:" + int(eval_params['batch_size']) +
-    #         "n_wait:" + int(eval_params['n_wait']))
+    # print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
+    #         " max sample:" + str(eval_params['max_sample']) + 
+    #         " batch size:" + str(eval_params['batch_size']) +
+    #         "n_wait:" + str(eval_params['n_wait']))
 
 
 
@@ -339,33 +334,33 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
     n_samples = 0
     corrects = 0
     
- 
     clusters=[]
     correctness=[]
 
+    data, prediction = stream.next_sample(sample_size)
+
     while n_samples < sample_size:
-        X, y = stream.next_sample()
-        my_pred = knn.predict(X)
+        tX = [data[n_samples]]
+        tY = [prediction[n_samples]]
+        my_pred = knn.predict(tX)
 
         clusters.insert(n_samples,my_pred[0])
 
-        if y[0] == my_pred[0]:
+        if tY[0] == my_pred[0]:
             corrects += 1
             correctness.insert(n_samples, 1)
         else:
             correctness.insert(n_samples, 0)
        
-        knn = knn.partial_fit(X, y)
+        knn = knn.partial_fit(tX, tY)
         n_samples += 1
-
-    # TODO: generatorse get all samples calismiyor
-    X,y  = stream.get_all_samples()
-    trained_samples = X[int(algo_params['pretrain_size']) : int(algo_params['pretrain_size'])+sample_size]
-
-    result = np.concatenate((trained_samples, np.array(clusters)[:,None]), axis=1)
-   
-    result = pd.DataFrame(data=result, columns=headers)
- 
+       
+    result = np.concatenate((data, np.array(clusters)[:,None]), axis=1)
+    # TODO: generatorde last featureı classla degistirebilirsin
+    if headers is "":
+        result = pd.DataFrame(data=result)
+    else:
+        result = pd.DataFrame(data=result, columns=headers)
     return result 
 
 
