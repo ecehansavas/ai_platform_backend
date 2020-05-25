@@ -11,6 +11,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 import psycopg2
 import os
+import sys
 import os.path
 import random
 import time
@@ -56,19 +57,33 @@ def main():
             cur.execute("UPDATE api_job SET state='in_progress', started_at=(%s) WHERE id=%s",[datetime.now(), id])
             conn.commit()
 
-            # run the evaluation with the given dataset, params, algo, etc.
-            results = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params,evaluation, eval_params)
+            try:
+                # run the evaluation with the given dataset, params, algo, etc.
+                results = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
+                
+                # update  json results
+                cur.execute("UPDATE api_job SET results=(%s) WHERE id=%s",([results,id]))
 
-            # update  json results
-            cur.execute("UPDATE api_job SET results=(%s) WHERE id=%s",([results,id]))
+                # update the results on the way, mark the task finished after done
+                cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
+            
+            except Exception as e:
+                print("Failed process: " + str(id))
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                print(str(e) + " line:" + str(exc_tb.tb_lineno))
+                cur.execute("UPDATE api_job SET state='failed', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
 
-            # update the results on the way, mark the task finished after done
-            cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
-            conn.commit()
-            if(os.path.isfile(getFile(id))):
-                os.remove(getFile(id))
+            finally:
+                conn.commit()
+
+            try:
+                if(os.path.isfile(getFile(id))):
+                    os.remove(getFile(id))
+            except Exception as e:
+                print("Failed removing file: " + str(id))
+                print(str(e))
         else:
-            print("Nothing to do...")
+            print("Wait for new job...")
 
         cur.close()
         conn.close()
@@ -79,7 +94,7 @@ def main():
     exit(0)
 
 
-def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
+def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
     headers = ""
     if('noise_percentage' in dataset_params): # generated 
         if('n_drift_features' in dataset_params): #hyperplane
@@ -129,7 +144,10 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
             out = json.dumps( [ row for row in reader ] )  
     
     elif algo_name =="knn":
-        sample_size = 300
+        if('sample_size' in dataset_params):
+            sample_size = int(dataset_params['sample_size'])
+        else:
+            sample_size = 300
         if('start_value' in dataset_params): 
             if('stop_value' in dataset): 
                 sample_size = int(dataset_params['stop_value']) - int(dataset_params['start_value'])
@@ -138,24 +156,24 @@ def prepareForRun(id,dataset, algo_name, dataset_params, algo_params, evaluation
         out = knn_result.to_json(orient='records')       
 
     elif algo_name == "k_means":
-        kmeans_result = run_kmeans(used_dataset,algo_params)
+        kmeans_result = run_kmeans(used_dataset, algo_params)
         data = pd.read_csv(dataset+".csv")
         sub_data = data[int(dataset_params['start_value']):int(dataset_params['stop_value'])]
         res = sub_data.merge(pd.Series(kmeans_result).rename('cluster'), left_index=True, right_index=True)
         out = res.to_json(orient='records')
     
     elif algo_name == "d3":
-        d3_result = run_d3(used_dataset,algo_params)
+        d3_result = run_d3(used_dataset, algo_params)
         out = json.dumps( d3_result) 
 
     elif algo_name == "denstream":
         print("run denstream run")
-        denstream = run_denstream(used_dataset,algo_params)
+        denstream = run_denstream(stream,algo_params)
         out = json.dumps(denstream) 
 
     elif algo_name == "clustream":
         print("insert clustream ")
-        clustream = run_clustream(used_dataset, algo_params)
+        clustream = run_clustream(stream, algo_params)
         out = json.dumps(clustream)
 
     elif algo_name == "half_space_tree":
