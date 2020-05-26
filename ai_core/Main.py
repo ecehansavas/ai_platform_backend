@@ -24,16 +24,9 @@ import pandas as pd
 from DenStream import DenStream
 from CluStream import CluStream
 from datetime import datetime
-
-# https://github.com/narjes23/Clustream-algorithm
-# https://github.com/ogozuacik/d3-discriminative-drift-detector-concept-drift/ 
-# https://github.com/issamemari/DenStream
-# https://scikit-multiflow.github.io/scikit-multiflow/api/generated/skmultiflow.anomaly_detection.HalfSpaceTrees.html#skmultiflow.anomaly_detection.HalfSpaceTrees
-   
-
+ 
 
 def main():
-    # while true
     while True:
 
         # connect to the database
@@ -120,28 +113,12 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
     if algo_name == "hoeffding_tree":
         run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
-            
-            # read and filter the comment lines
-            reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
-            
-            # skip header row
-            next(reader)
-            
-            # Parse the CSV into JSON  
-            out = json.dumps( [ row for row in reader ] )  
+            out = readAndParseResults(file)
             
     elif algo_name =="samknn":
         samknn_result = run_samknn(getFile(id),stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
-            
-            # read and filter the comment lines
-            reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
-
-            # skip header row
-            next(reader)
-            
-            # Parse the CSV into JSON  
-            out = json.dumps( [ row for row in reader ] )  
+            out = readAndParseResults(file) 
     
     elif algo_name =="knn":
         if('sample_size' in dataset_params):
@@ -179,12 +156,7 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
     elif algo_name == "half_space_tree":
         run_halfspacetree(getFile(id), stream, algo_params, evaluation, eval_params)
         with open(getFile(id)) as file: 
-            # read and filter the comment lines
-            reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
-            # skip header row
-            next(reader)
-            # Parse the CSV into JSON  
-            out = json.dumps( [ row for row in reader ] )  
+            out = readAndParseResults(file) 
         
     else:
         print("algorithm not found")
@@ -394,6 +366,17 @@ def run_kmeans(dataset_name, algo_params):
 
 def getFile(id):
     return "result-"+str(id)+".csv"
+
+def readAndParseResults(file):
+    # read and filter the comment lines
+    reader = csv.DictReader(filter(lambda row: row[0]!='#',file))
+    
+    # skip header row
+    next(reader)
+    
+    # Parse the CSV into JSON  
+    return json.dumps( [ row for row in reader ] )  
+            
 
 
 
