@@ -20,3 +20,4 @@ class Job(models.Model):
     algorithm_params = JSONField()
     evaluation_params = JSONField(default=dict)
     results = JSONField()
+    data_summary = JSONField(default=dict)

@@ -52,10 +52,11 @@ def main():
 
             try:
                 # run the evaluation with the given dataset, params, algo, etc.
-                results = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
+                results, data_summary = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
                 
                 # update  json results
-                cur.execute("UPDATE api_job SET results=(%s) WHERE id=%s",([results,id]))
+                cur.execute("UPDATE api_job SET results=(%s), data_summary=(%s) WHERE id=%s",([results,data_summary,id]))
+                
 
                 # update the results on the way, mark the task finished after done
                 cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
@@ -89,6 +90,7 @@ def main():
 
 def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluation, eval_params):
     headers = ""
+    data_summary = {}
     if('noise_percentage' in dataset_params): # generated 
         if('n_drift_features' in dataset_params): #hyperplane
             stream = HyperplaneGenerator(random_state = None, 
@@ -104,7 +106,9 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
                                     noise_percentage = float(dataset_params['noise_percentage']))
     else: 
         used_dataset = prepareDataset(dataset, dataset_params)
-        headers = (pd.read_csv(used_dataset)).columns.tolist()
+        frame = pd.read_csv(used_dataset)
+        headers = (frame).columns.tolist()
+        data_summary = frame.describe().to_json()
        
         stream = FileStream(used_dataset)
     stream.prepare_for_use()
@@ -161,7 +165,7 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
     else:
         print("algorithm not found")
 
-    return out
+    return out, data_summary
 
 
 def  prepareDataset(dataset, dataset_params):
@@ -377,7 +381,6 @@ def readAndParseResults(file):
     # Parse the CSV into JSON  
     return json.dumps( [ row for row in reader ] )  
             
-
 
 
 if __name__ == "__main__":
