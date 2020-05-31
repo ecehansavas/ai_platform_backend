@@ -13,6 +13,7 @@ import psycopg2
 import os
 import sys
 import os.path
+import traceback
 import random
 import time
 import csv
@@ -53,18 +54,16 @@ def main():
             try:
                 # run the evaluation with the given dataset, params, algo, etc.
                 results, data_summary = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
-                
-                # update  json results
-                cur.execute("UPDATE api_job SET results=(%s), data_summary=(%s) WHERE id=%s",([results,data_summary,id]))
-                
 
+                # update  json results
+                cur.execute("UPDATE api_job SET results=(%s), data_summary=(%s) WHERE id=%s",([results,json.dumps(data_summary),id]))
+                
                 # update the results on the way, mark the task finished after done
                 cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
             
             except Exception as e:
-                print("Failed process: " + str(id))
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                print(str(e) + " line:" + str(exc_tb.tb_lineno))
+                print("Failed process: id-" + str(id))
+                traceback.print_exc()
                 cur.execute("UPDATE api_job SET state='failed', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
 
             finally:
@@ -108,11 +107,11 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
         used_dataset = prepareDataset(dataset, dataset_params)
         frame = pd.read_csv(used_dataset)
         headers = (frame).columns.tolist()
-        data_summary = frame.describe().to_json()
+        # headers = (pd.read_csv(used_dataset, index_col=0)).columns.tolist()
+        data_summary = pd.read_csv(used_dataset, index_col=0).describe().to_json()
        
         stream = FileStream(used_dataset)
-    stream.prepare_for_use()
-    
+    stream.prepare_for_use()    
 
     if algo_name == "hoeffding_tree":
         run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
@@ -130,7 +129,7 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
         else:
             sample_size = 300
         if('start_value' in dataset_params): 
-            if('stop_value' in dataset): 
+            if('stop_value' in dataset_params): 
                 sample_size = int(dataset_params['stop_value']) - int(dataset_params['start_value'])
             
         knn_result = run_knn(getFile(id),stream, headers, sample_size, algo_params, evaluation, eval_params) 
@@ -205,7 +204,7 @@ def run_d3(dataset_name,algo_params):
 
 
 #TODO: calismiyor
-def run_denstream(dataset_name,algo_params):
+def run_denstream (dataset_name,algo_params):
     data = pd.read_csv(dataset_name, header=None)
     print( data.values)
     denstream = DenStream(eps = float(algo_params['epsilon']), 
@@ -331,11 +330,11 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
     clusters=[]
     correctness=[]
 
-    data, prediction = stream.next_sample(sample_size)
+    X, y = stream.next_sample(sample_size)
 
     while n_samples < sample_size:
-        tX = [data[n_samples]]
-        tY = [prediction[n_samples]]
+        tX = [X[n_samples]]
+        tY = [y[n_samples]]
         my_pred = knn.predict(tX)
 
         clusters.insert(n_samples,my_pred[0])
@@ -348,14 +347,20 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
        
         knn = knn.partial_fit(tX, tY)
         n_samples += 1
-       
-    result = np.concatenate((data, np.array(clusters)[:,None]), axis=1)
-    # TODO: generatorde last featureı classla degistirebilirsin
+
+
     if headers is "":
-        result = pd.DataFrame(data=result)
-    else:
-        result = pd.DataFrame(data=result, columns=headers)
-    return result 
+        headers=list()
+        for i in range(1,len(X[0])+1):
+            headers.append("attr"+str(i))
+        
+    headers.append("found_label")
+
+    result = np.concatenate((X, np.array(y)[:,None]), axis=1)
+    result = np.concatenate((result, np.array(clusters)[:,None]), axis=1)
+    
+    return pd.DataFrame(data=result, columns=headers)
+ 
 
 
 def run_kmeans(dataset_name, algo_params):
