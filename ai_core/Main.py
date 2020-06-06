@@ -314,14 +314,24 @@ def run_samknn(resultFile, stream,algo_params, evaluation, eval_params):
 
 
 def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, eval_params):
+    pretrain_size = int(algo_params['pretrain_size'])
+    neighbors = int(algo_params['neighbors'])
+    max_window_size = int(algo_params['max_window_size'])
+    leaf_size = int(algo_params['leaf_size'])
+    
+    print("Running knn with parameters sample_size: %d" % sample_size)
 
-    X, y = stream.next_sample(int(algo_params['pretrain_size']))
+    X, y = stream.next_sample(pretrain_size)
 
-    knn = KNN(n_neighbors=int(algo_params['neighbors']), 
-                        max_window_size=int(algo_params['max_window_size']), 
-                        leaf_size=int(algo_params['leaf_size']),
-                        nominal_attributes=None)
-   
+    print("Received %d samples by using pretrain size %d" % (len(X), pretrain_size))
+
+    knn = KNN(n_neighbors = neighbors,
+              max_window_size = max_window_size, 
+              leaf_size = leaf_size,
+              nominal_attributes = None)
+
+    print("Created knn model with %d neighbors. max_windows_size %d and lead_size %d." % (neighbors, max_window_size, leaf_size))
+
     knn.partial_fit(X, y) 
 
     n_samples = 0
@@ -330,9 +340,13 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
     clusters=[]
     correctness=[]
 
+    print("Fetching the next %d samples after the fırst %d pretrain samples" % (sample_size, pretrain_size))
+
     X, y = stream.next_sample(sample_size)
 
-    while n_samples < sample_size:
+    print("Received %d samples after requesting %d samples" % (len(X), sample_size))
+
+    while n_samples < len(X):
         tX = [X[n_samples]]
         tY = [y[n_samples]]
         my_pred = knn.predict(tX)
