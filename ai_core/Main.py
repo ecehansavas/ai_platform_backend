@@ -22,8 +22,6 @@ import re
 import subprocess
 from subprocess import PIPE
 import pandas as pd
-from DenStream import DenStream
-from CluStream import CluStream
 from datetime import datetime
  
 
@@ -56,7 +54,7 @@ def main():
                 results, data_summary = prepareForRun(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
 
                 # update  json results
-                cur.execute("UPDATE api_job SET results=(%s), data_summary=(%s) WHERE id=%s",([results,json.dumps(data_summary),id]))
+                cur.execute("UPDATE api_job SET results=(%s), data_summary=(%s) WHERE id=%s",([results,data_summary,id]))
                 
                 # update the results on the way, mark the task finished after done
                 cur.execute("UPDATE api_job SET state='finished', finished_at=(%s) WHERE id=%s",[datetime.now(),id])
@@ -146,15 +144,6 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
         d3_result = run_d3(used_dataset, algo_params)
         out = json.dumps( d3_result) 
 
-    elif algo_name == "denstream":
-        print("run denstream run")
-        denstream = run_denstream(stream,algo_params)
-        out = json.dumps(denstream) 
-
-    elif algo_name == "clustream":
-        print("insert clustream ")
-        clustream = run_clustream(stream, algo_params)
-        out = json.dumps(clustream)
 
     elif algo_name == "half_space_tree":
         run_halfspacetree(getFile(id), stream, algo_params, evaluation, eval_params)
@@ -203,32 +192,6 @@ def run_d3(dataset_name,algo_params):
     return results  
 
 
-#TODO: calismiyor
-def run_denstream (dataset_name,algo_params):
-    data = pd.read_csv(dataset_name, header=None)
-    print( data.values)
-    denstream = DenStream(eps = float(algo_params['epsilon']), 
-                          lambd = float(algo_params['lambda']), 
-                          beta = float(algo_params['beta']), 
-                          mu = float(algo_params['mu'])).fit_predict(data.values)
-    return denstream
-
-#TODO: calismiyor
-def run_clustream(dataset, algorithm_params):
-    data = pd.read_csv(dataset, header=None)
-    print(data.values)
-    clustream = CluStream(nb_initial_points = 1000, 
-                        time_window = 1000, 
-                        timestamp = 0, 
-                        clocktime = 0, 
-                        nb_micro_cluster = 100,
-                        nb_macro_cluster = 5, 
-                        micro_clusters = [], 
-                        alpha = 2, 
-                        l = 2, 
-                        h = 1000)
-    return clustream
-
 def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
     ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
                       tie_threshold = float(algo_params['tie_threshold']),   
@@ -245,6 +208,9 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                                     batch_size = int(eval_params['batch_size']),
                                     metrics = ['accuracy', 'kappa','kappa_t'],
                                     output_file = resultFile)
+    elif evaluation=="basic":
+        print("Basic evaluation")
+        # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
     else:
         evaluator = EvaluatePrequential(show_plot = False,
                                         pretrain_size = int(eval_params['pretrain_size']),
@@ -370,6 +336,7 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
         
     headers.append("found_label")
 
+    print("Headers %d: "%(len(headers)) +" " +str(headers) )
     result = np.concatenate((X, np.array(y)[:,None]), axis=1)
     result = np.concatenate((result, np.array(clusters)[:,None]), axis=1)
     
