@@ -112,9 +112,12 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
     stream.prepare_for_use()    
 
     if algo_name == "hoeffding_tree":
-        run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
-        with open(getFile(id)) as file: 
-            out = readAndParseResults(file)
+        basic_result = run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
+        if(os.path.isfile(getFile(id))):
+            with open(getFile(id)) as file: 
+                out = readAndParseResults(file)
+        else:
+            out = basic_result
             
     elif algo_name =="samknn":
         samknn_result = run_samknn(getFile(id),stream, algo_params, evaluation, eval_params)
@@ -200,6 +203,8 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                       no_preprune = bool(algo_params['no_preprune']),
                       leaf_prediction = str(algo_params['leaf_prediction']),
                       nb_threshold = int(algo_params['nb_threshold']))
+
+    print("Algo params: " + json.dumps(algo_params))
    
     if evaluation=="holdout": 
         evaluator = EvaluateHoldout(show_plot = False,
@@ -208,9 +213,35 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                                     batch_size = int(eval_params['batch_size']),
                                     metrics = ['accuracy', 'kappa','kappa_t'],
                                     output_file = resultFile)
+        evaluator.evaluate(stream=stream, model=ht)
+    
     elif evaluation=="basic":
         print("Basic evaluation")
         # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
+        n_samples = 0
+        correct_cnt = 0
+        max_samples = 200 # int(eval_params['max_sample'])
+
+        # Train the estimator with the samples provided by the data stream
+        while n_samples < max_samples and stream.has_more_samples():
+            X, y = stream.next_sample()
+            y_pred = ht.predict(X)
+            if y[0] == y_pred[0]:
+                correct_cnt += 1
+            ht = ht.partial_fit(X, y)
+            try:
+                print('{} samples analyzed.'.format(n_samples))
+                print('Hoeffding Tree accuracy: {}'.format(correct_cnt / n_samples))
+            except ZeroDivisionError:
+                print("0")
+           
+            n_samples += 1
+
+
+        # Display results
+        print("Basic biddiiiiiiiiiiiiiiiiii")
+        return correct_cnt / n_samples
+
     else:
         evaluator = EvaluatePrequential(show_plot = False,
                                         pretrain_size = int(eval_params['pretrain_size']),
@@ -220,12 +251,12 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                                         metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file = resultFile)
     
-    # print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
-    #         " max sample:" + str(eval_params['max_sample']) + 
-    #         " batch size:" + str(eval_params['batch_size']) +
-    #         "n_wait:" + str(eval_params['n_wait']))
+        print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
+                " max sample:" + str(eval_params['max_sample']) + 
+                " batch size:" + str(eval_params['batch_size']) +
+                "n_wait:" + str(eval_params['n_wait']))
 
-    evaluator.evaluate(stream=stream, model=ht)
+        evaluator.evaluate(stream=stream, model=ht)
 
 #TODO: bunun sonuclarini alamadik henuz.
 def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
@@ -236,6 +267,9 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
                         size_limit = int(algo_params['size_limit']),
                         anomaly_threshold = float(algo_params['anomaly_threshold']),
                         random_state = None)
+
+    print("Algo params: " + json.dumps(algo_params))
+    
     if evaluation=="holdout": 
         evaluator = EvaluateHoldout(show_plot = False,
                                     max_samples = int(eval_params['max_sample']),
@@ -243,6 +277,8 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
                                     batch_size = int(eval_params['batch_size']),
                                     metrics = ['accuracy', 'kappa','kappa_t'],
                                     output_file = resultFile)
+        evaluator.evaluate(stream=stream, model=ht)
+
     else:
         evaluator = EvaluatePrequential(show_plot=False,
                                         pretrain_size = int(eval_params['pretrain_size']),
@@ -252,10 +288,12 @@ def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
                                         metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
                                         output_file = resultFile)
     
-    # print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
-    #         " max sample:" + str(eval_params['max_sample']) + 
-    #         " batch size:" + str(eval_params['batch_size']) +
-    #         "n_wait:" + str(eval_params['n_wait']))
+        print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
+                " max sample:" + str(eval_params['max_sample']) + 
+                " batch size:" + str(eval_params['batch_size']) +
+                "n_wait:" + str(eval_params['n_wait']))
+
+        evaluator.evaluate(stream=stream, model=ht)
 
 
 
