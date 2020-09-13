@@ -21,3 +21,4 @@ class Job(models.Model):
     evaluation_params = JSONField(default=dict)
     results = JSONField()
     data_summary = JSONField(default=dict)
+    progress = JSONField(default=dict)

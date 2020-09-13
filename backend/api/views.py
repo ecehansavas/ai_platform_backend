@@ -14,7 +14,7 @@ def jobs_list(request):
     jobs = Job.objects.all()[:MAX_OBJECTS]
     data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name","evaluation"
     ,"state","created_at","started_at","updated_at","finished_at"
-    ,"dataset_params", "algorithm_params","evaluation_params","results", "data_summary"))}
+    ,"dataset_params", "algorithm_params","evaluation_params","results", "data_summary", "progress"))}
     return JsonResponse(data)
 
 @csrf_exempt
@@ -34,7 +34,8 @@ def get_job(request, id):
         "algorithm_params": job.algorithm_params,
         "evaluation_params": job.evaluation_params,
         "results": job.results,
-        "data_summary": job.data_summary
+        "data_summary": job.data_summary,
+        "progress": job.progress
     }}
     return JsonResponse(data)
 
@@ -54,6 +55,7 @@ def new_job(request):
     job.evaluation_params = body['evaluation_parameters']
     job.results ={}
     job.data_summary = {}
+    job.progress = {}
     job.save()
     
     return HttpResponse("new job")

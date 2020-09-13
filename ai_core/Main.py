@@ -112,12 +112,12 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
     stream.prepare_for_use()    
 
     if algo_name == "hoeffding_tree":
-        basic_result = run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params)
+        basic_result = run_hoeffdingtree(getFile(id),stream, algo_params, evaluation, eval_params, id, dataset_params)
         if(os.path.isfile(getFile(id))):
             with open(getFile(id)) as file: 
                 out = readAndParseResults(file)
         else:
-            out = basic_result
+            out = json.dumps(basic_result)
             
     elif algo_name =="samknn":
         samknn_result = run_samknn(getFile(id),stream, algo_params, evaluation, eval_params)
@@ -133,7 +133,7 @@ def prepareForRun(id, dataset, algo_name, dataset_params, algo_params, evaluatio
             if('stop_value' in dataset_params): 
                 sample_size = int(dataset_params['stop_value']) - int(dataset_params['start_value'])
             
-        knn_result = run_knn(getFile(id),stream, headers, sample_size, algo_params, evaluation, eval_params) 
+        knn_result = run_knn(getFile(id),stream, headers, sample_size, algo_params, evaluation, eval_params, id) 
         out = knn_result.to_json(orient='records')       
 
     elif algo_name == "k_means":
@@ -195,7 +195,7 @@ def run_d3(dataset_name,algo_params):
     return results  
 
 
-def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
+def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params, jobid, dataset_params):
     ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
                       tie_threshold = float(algo_params['tie_threshold']),   
                       binary_split = bool(algo_params['binary_split']),
@@ -215,34 +215,9 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                                     output_file = resultFile)
         evaluator.evaluate(stream=stream, model=ht)
     
-    elif evaluation=="basic":
-        print("Basic evaluation")
-        # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
-        n_samples = 0
-        correct_cnt = 0
-        max_samples = 200 # int(eval_params['max_sample'])
+   
 
-        # Train the estimator with the samples provided by the data stream
-        while n_samples < max_samples and stream.has_more_samples():
-            X, y = stream.next_sample()
-            y_pred = ht.predict(X)
-            if y[0] == y_pred[0]:
-                correct_cnt += 1
-            ht = ht.partial_fit(X, y)
-            try:
-                print('{} samples analyzed.'.format(n_samples))
-                print('Hoeffding Tree accuracy: {}'.format(correct_cnt / n_samples))
-            except ZeroDivisionError:
-                print("0")
-           
-            n_samples += 1
-
-
-        # Display results
-        print("Basic biddiiiiiiiiiiiiiiiiii")
-        return correct_cnt / n_samples
-
-    else:
+    elif evaluation=="prequential":
         evaluator = EvaluatePrequential(show_plot = False,
                                         pretrain_size = int(eval_params['pretrain_size']),
                                         max_samples = int(eval_params['max_sample']),
@@ -257,6 +232,61 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params):
                 "n_wait:" + str(eval_params['n_wait']))
 
         evaluator.evaluate(stream=stream, model=ht)
+
+    else:
+        print("Basic evaluation")
+        # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
+        n_samples = 0
+        correct_cnt = 0
+       
+        max_samples =  300
+        if('start_value' in dataset_params): 
+            if('stop_value' in dataset_params): 
+                max_samples =  int(dataset_params['stop_value']) - int(dataset_params['start_value'])
+        
+        # Train the estimator with the samples provided by the data stream
+        while n_samples < max_samples and stream.has_more_samples():
+            time.sleep(0.1)
+            X, y = stream.next_sample()
+            y_pred = ht.predict(X)
+            if y[0] == y_pred[0]:
+                correct_cnt += 1
+            ht = ht.partial_fit(X, y)
+            try:
+                print('{} samples analyzed.'.format(n_samples))
+                accuracy =  round((correct_cnt / n_samples),2)
+                print('Hoeffding Tree accuracy: {}'.format(correct_cnt / n_samples))
+                progress = {}
+                progress["n_samples"] = n_samples
+                progress["correct_cnt"] = correct_cnt
+                progress["accuracy"] = accuracy
+                append_progress(jobid, progress)
+            except ZeroDivisionError:
+                print("0")
+           
+            n_samples += 1
+       
+        return progress
+
+
+def append_progress(jobid, progress):
+    conn = psycopg2.connect(os.environ['DATABASE_URL'])
+    cur = conn.cursor()
+
+    cur.execute("SELECT progress FROM api_job WHERE id=%s",[jobid])
+    result = cur.fetchone()[0]
+    if not result.get("progress"):
+        result["progress"] = []
+
+    result["progress"].append(progress)
+
+    cur.execute("UPDATE api_job SET progress=%s WHERE id=%s",[json.dumps(result), jobid])
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+
 
 #TODO: bunun sonuclarini alamadik henuz.
 def run_halfspacetree(resultFile,stream, algo_params, evaluation, eval_params):
@@ -317,7 +347,7 @@ def run_samknn(resultFile, stream,algo_params, evaluation, eval_params):
     evaluator.evaluate(stream=stream, model=classifier)
 
 
-def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, eval_params):
+def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, eval_params, jobid):
     pretrain_size = int(algo_params['pretrain_size'])
     neighbors = int(algo_params['neighbors'])
     max_window_size = int(algo_params['max_window_size'])
@@ -351,6 +381,7 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
     print("Received %d samples after requesting %d samples" % (len(X), sample_size))
 
     while n_samples < len(X):
+        time.sleep(0.1)
         tX = [X[n_samples]]
         tY = [y[n_samples]]
         my_pred = knn.predict(tX)
@@ -363,6 +394,19 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
         else:
             correctness.insert(n_samples, 0)
        
+        try:
+            accuracy = round((corrects / (n_samples+1)),2)
+            print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: {}' .format(accuracy))
+        except ZeroDivisionError:
+            accuracy = 0
+            print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: 0' )
+
+        progress = {}
+        progress["n_samples"] = n_samples
+        progress["correct_cnt"] = corrects
+        progress["accuracy"] = accuracy
+        append_progress(jobid, progress)
+        
         knn = knn.partial_fit(tX, tY)
         n_samples += 1
 
