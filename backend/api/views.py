@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import Job
 import json
 
+# eren: delete this comment :)
 # Create your views here.
 def index(request):
     return HttpResponse("Hello, hello. Tell me what you want right now")
@@ -58,10 +59,12 @@ def new_job(request):
     job.progress = {}
     job.save()
     
-    return HttpResponse("new job")
+    return HttpResponse("new job") # eren: return a better response
 
 @csrf_exempt
 def delete_job(request,id):
     job = get_object_or_404(Job, pk=id)
     job.delete()
     return HttpResponse(status=202) 
+
+# eren: move your dataset files to a proper directory

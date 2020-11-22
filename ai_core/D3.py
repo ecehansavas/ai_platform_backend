@@ -119,6 +119,9 @@ auc = float(sys.argv[4])
 D3_win = D3(w,rho,stream.n_features,auc)
 stream_acc = []
 stream_record = []
+# Our additions
+drifted_item = []
+# End of our additions
 stream_true= 0
 
 i=0
@@ -137,6 +140,10 @@ while(stream.has_more_samples()):
     else:
         if D3_win.driftCheck():             #detected
             print("concept drift detected at {}".format(i))
+            # Our additions
+            drifted_item.append(i)       
+            # End of our additions   
+              
             #retrain the model
             stream_clf.reset()
             stream_clf.partial_fit(D3_win.getCurrentData(), D3_win.getCurrentLabels(), classes=stream.target_values)
@@ -183,7 +190,7 @@ def window_average(x,N):
 # In[8]:
 
 
-a=int(len(df)/25)
+a=int(len(df)/10)
 ddd_acc2 = window_average(stream_record, a)
 
 
@@ -195,10 +202,14 @@ f = plt.figure()
 plt.plot(x, ddd_acc2, 'r', label='D3', marker="*") 
 
 
+# ----- OUR ADDITIONS 
+# This part changed to getting results when we called the algorithm as a subprocess.
 results = []
 results.insert(0,x.tolist()) 
 results.insert(1, ddd_acc2)
+results.insert(2, drifted_item)
 print("<RESULTS_START>"+json.dumps(results)+"<RESULTS_END>")
+# ----- END OF OUR ADDITIONS 
 
 plt.xlabel('Percentage of data', fontsize=10)
 plt.ylabel('Accuracy', fontsize=10)
