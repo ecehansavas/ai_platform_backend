@@ -80,6 +80,14 @@ class AIJob:
         elif self.algorithm_name == "d3":
             d3_result = run_d3(used_dataset, self.algorithm_params)
             out = json.dumps( d3_result) 
+        
+        elif self.algorithm_name == "clustream":
+            clustream_result = run_clustream(used_dataset, self.algorithm_params)
+            out = json.dumps(clustream_result)
+        
+        elif self.algorithm_name == "denstream":
+            denstream_result = run_denstream(used_dataset, self.algorithm_params)
+            out = json.dumps(denstream_result)  
             
         else:
             print("algorithm not found")
@@ -287,8 +295,13 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params, jo
 def run_d3(dataset_name,algo_params):
     print("Running D3 algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
+
+    xfname="stream1_X.txt"
+    lfname="stream1_labels.txt"
+
+
     try:
-        process = subprocess.run(['python', "ai_core/D3.py", dataset_name, str(algo_params['w']), str(algo_params['rho']), str(algo_params['auc'])], check=True, stdout=PIPE)
+        process = subprocess.run(['python', "ai_core/D3.py", xfname, lfname, str(algo_params['w']), str(algo_params['rho']), str(algo_params['auc'])], check=True, stdout=PIPE)
     except subprocess.CalledProcessError as e:
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
     
@@ -315,6 +328,89 @@ def run_d3(dataset_name,algo_params):
     results.insert(len(x_array)+1,drifted_items)
 
     print("D3 algorithm results obtained: " + str(results))
+    
+    return results  
+
+
+# TODO: Sonuclari al
+def run_clustream(dataset_name,algo_params):
+    print("Running CluStream algorithm with dataset " + dataset_name)
+    print("Algorithm parameters: " + str(algo_params))
+
+    xfname="xfname.txt"
+    lfname="lfname.txt"
+    all_data = pd.read_csv(dataset_name,header=None)
+
+    x = all_data.iloc[:,:-1]
+    x.to_csv(xfname, index=False, header=None)
+
+    labels = all_data[all_data.columns[-1]]
+    labels.to_csv(lfname, index=False, header=None)
+    
+    try:
+        process = subprocess.run(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m'])], check=True, stdout=PIPE)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+    
+    print("Finished running CluStream")
+    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
+    search_results = pattern.search(process.stdout.decode("utf-8"))
+    clustream_results_json= search_results.group(1) 
+    clustream_results = json.loads(clustream_results_json)
+
+    x_array = clustream_results[0]
+    acc_array = clustream_results[1]
+
+    results = []
+
+    for i in range(0,len(x_array)):
+        item = {}
+        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
+        item["acc"] = float("{:.2f}".format(acc_array[i]))
+        results.insert(i,item)
+    
+    print("CluStream algorithm results obtained: " + str(results))
+    
+    return results  
+
+# TODO: Sonuclari al
+def run_denstream(dataset_name,algo_params):
+    print("Running DenStream algorithm with dataset " + dataset_name)
+    print("Algorithm parameters: " + str(algo_params))
+
+    xfname="xfname.txt"
+    lfname="lfname.txt"
+    all_data = pd.read_csv(dataset_name,header=None)
+
+    x = all_data.iloc[:,:-1]
+    x.to_csv(xfname, index=False, header=None)
+
+    labels = all_data[all_data.columns[-1]]
+    labels.to_csv(lfname, index=False, header=None)
+    
+    try:
+        process = subprocess.run(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon'])], check=True, stdout=PIPE)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+    
+    print("Finished running DenStream")
+    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
+    search_results = pattern.search(process.stdout.decode("utf-8"))
+    denstream_results_json= search_results.group(1) 
+    denstream_results = json.loads(denstream_results_json)
+
+    x_array = denstream_results[0]
+    acc_array = denstream_results[1]
+
+    results = []
+
+    for i in range(0,len(x_array)):
+        item = {}
+        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
+        item["acc"] = float("{:.2f}".format(acc_array[i]))
+        results.insert(i,item)
+    
+    print("DenStream algorithm results obtained: " + str(results))
     
     return results  
 
