@@ -103,6 +103,17 @@ def check_true(y,y_hat):
         return 0
 
 
+def window_average(x,N):
+    low_index = 0
+    high_index = low_index + N
+    w_avg = []
+    while(high_index<len(x)):
+        temp = sum(x[low_index:high_index])/N
+        w_avg.append(temp)
+        low_index = low_index + N
+        high_index = high_index + N
+    return w_avg
+
 
 df = select_data(sys.argv[1])
 stream = DataStream(df)
@@ -119,9 +130,11 @@ auc = float(sys.argv[4])
 D3_win = D3(w,rho,stream.n_features,auc)
 stream_acc = []
 stream_record = []
-# Our additions
-drifted_item = []
-# End of our additions
+# ----- OUR ADDITIONS 
+# This part changed to getting results when we called the algorithm as a subprocess.
+results = []
+# ----- END OF OUR ADDITIONS 
+
 stream_true= 0
 
 i=0
@@ -141,7 +154,7 @@ while(stream.has_more_samples()):
         if D3_win.driftCheck():             #detected
             print("concept drift detected at {}".format(i))
             # Our additions
-            drifted_item.append(i)       
+            print("<DRIFT_START>"+ str(i)+"<DRIFT_END>") 
             # End of our additions   
               
             #retrain the model
@@ -164,6 +177,13 @@ while(stream.has_more_samples()):
             stream_record.append(check_true(y, y_hat))
             #add new sample to the window
             D3_win.addInstance(X,y)
+    
+    
+    a=int(len(df)/10)
+    if i%a==0: 
+        ddd_acc2 = window_average(stream_record, a)
+        print("<ACCURACY_START>"+str(ddd_acc2)+","+str(len(df))+","+str(i)+"<ACCURACY_END>")
+    
     i = i+1  
 
 elapsed = format(time.time() - start, '.4f')
@@ -175,16 +195,7 @@ print(final_accuracy)
 # In[7]:
 
 
-def window_average(x,N):
-    low_index = 0
-    high_index = low_index + N
-    w_avg = []
-    while(high_index<len(x)):
-        temp = sum(x[low_index:high_index])/N
-        w_avg.append(temp)
-        low_index = low_index + N
-        high_index = high_index + N
-    return w_avg
+
 
 
 # In[8]:
@@ -204,11 +215,11 @@ plt.plot(x, ddd_acc2, 'r', label='D3', marker="*")
 
 # ----- OUR ADDITIONS 
 # This part changed to getting results when we called the algorithm as a subprocess.
-results = []
-results.insert(0,x.tolist()) 
-results.insert(1, ddd_acc2)
-results.insert(2, drifted_item)
-print("<RESULTS_START>"+json.dumps(results)+"<RESULTS_END>")
+# results = []
+# results.insert(0,x.tolist()) 
+# results.insert(1, ddd_acc2)
+# results.insert(2, drifted_item)
+# print("<RESULTS_START>"+json.dumps(results)+"<RESULTS_END>")
 # ----- END OF OUR ADDITIONS 
 
 plt.xlabel('Percentage of data', fontsize=10)

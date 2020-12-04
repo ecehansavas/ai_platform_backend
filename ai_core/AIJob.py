@@ -18,7 +18,7 @@ import csv
 import json
 import re
 import subprocess
-from subprocess import PIPE
+from subprocess import PIPE, Popen
 import pandas as pd
  
 
@@ -78,7 +78,7 @@ class AIJob:
             out = res.to_json(orient='records')
         
         elif self.algorithm_name == "d3":
-            d3_result = run_d3(used_dataset, self.algorithm_params)
+            d3_result = run_d3(used_dataset, self.algorithm_params, self.id)
             out = json.dumps( d3_result) 
         
         elif self.algorithm_name == "clustream":
@@ -291,43 +291,57 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params, jo
 
     
 # eren: explain how do we handle the D3 algorithm
-# eren: TODO: we should modify D3.js to be used as a module
-def run_d3(dataset_name,algo_params):
+def run_d3(dataset_name,algo_params, jobid):
     print("Running D3 algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
-
-    xfname="stream1_X.txt"
-    lfname="stream1_labels.txt"
-
+    results = []
+    drifts = []
+    drifted_items = {}
 
     try:
-        process = subprocess.run(['python', "ai_core/D3.py", xfname, lfname, str(algo_params['w']), str(algo_params['rho']), str(algo_params['auc'])], check=True, stdout=PIPE)
+        process = subprocess.Popen(['python', "ai_core/D3.py", dataset_name, str(algo_params['w']), str(algo_params['rho']), str(algo_params['auc'])], stdout=PIPE)
+        driftPattern = re.compile("<DRIFT_START>(.*)<DRIFT_END>")
+        accuracyPattern = re.compile("<ACCURACY_START>(.*),(.*),(.*)<ACCURACY_END>")
+
+        # TODO: do while yap
+        while process.poll() is None:
+            print("process polled")
+          
+            for line in process.stdout:
+                drift_search_results = driftPattern.search(line.decode('utf-8'))
+                accuracy_search_results = accuracyPattern.search(line.decode('utf-8'))
+
+                if drift_search_results:
+                    d3_drifts_json = drift_search_results.group(1) 
+                    drifts.append(d3_drifts_json)
+                    
+                elif accuracy_search_results:
+                    accuracy = json.loads(accuracy_search_results.group(1))
+                    data_length = json.loads(accuracy_search_results.group(2))
+                    index = json.loads(accuracy_search_results.group(3))
+                          
+                    if len(accuracy)>0:
+                        item={}
+                        acc = accuracy[-1]
+                        item["acc"] = round(float(acc),4)
+                        item["percentage"] = round(int(index)/int(data_length),1)
+                        append_progress(jobid, item)
+                        
+                        results.clear()
+                        for acc in accuracy:
+                            item={}
+                            item["acc"] = round(float(acc),4)
+                            item["percentage"] = round(int(index)/int(data_length),1)
+                            results.append(item)
+        
+        drifted_items["drifted_items"] = drifts
+        results.append(drifted_items)
+        print("Finished running D3")
+                
     except subprocess.CalledProcessError as e:
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
-    
-    print("Finished running D3")
-    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
-    search_results = pattern.search(process.stdout.decode("utf-8"))
-    d3_results_json= search_results.group(1) 
-    d3_results = json.loads(d3_results_json)
 
-    x_array = d3_results[0]
-    acc_array = d3_results[1]
-    print("Drifted values: " + str(d3_results[2]))
-
-    results = []
-
-    for i in range(0,len(x_array)):
-        item = {}
-        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
-        item["acc"] = float("{:.2f}".format(acc_array[i]))
-        results.insert(i,item)
-    
-    drifted_items = {}
-    drifted_items["drifted_items"] =  d3_results[2]
-    results.insert(len(x_array)+1,drifted_items)
-
-    print("D3 algorithm results obtained: " + str(results))
+    # print("D3 algorithm results obtained: " + str(results))
     
     return results  
 
