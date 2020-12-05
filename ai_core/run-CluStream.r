@@ -6,26 +6,21 @@ library(stream)
 
 args<-commandArgs(TRUE)
 
-xfname = args[1]
-lfname = args[2]
+xfname = args[1] # data except labels
+lfname = args[2] # labels
 k = as.numeric(args[3])
 window_length = as.numeric( args[4])
 m = as.numeric(args[5])
 
-# xfname="stream1_X.txt"
-# lfname="stream1_labels.txt"
-
 data_length = 50000
 
 # datayi algoritmaya kacar kacar verecegi
-part_size = 100
+part_size = 1000
 part_start_indexes = seq(1, (data_length-part_size+1), by=part_size)
 
-cat("========== ^ ==========\n")
-cat("New run of CluStream algorithm PART by PART at :")
 Sys.time()
-cat("window length (horizon) : [", window_length, "]\n")
-cat("---\n")
+# cat("New run of CluStream algorithm PART by PART at :")
+# cat("window length (horizon) : [", window_length, "]\n")
 
 X = read.table(xfname, sep=",")
 lbls = read.table(lfname)
@@ -47,17 +42,14 @@ for(si in part_start_indexes)
     end = Sys.time()
     this_time = end - begin
     total_time = total_time + this_time
-    cat("Found Labels: " , ass, "\n")
-    cat("Real Labels : " , tail(head(t(lbls), si+part_size-1), part_size), "\n")
+    # cat("Found Labels: " , ass, "\n")
+    # cat("Real Labels : " , tail(head(t(lbls), si+part_size-1), part_size), "\n")
     ari = adjustedRandIndex(ass, tail(head(t(lbls), si+part_size-1), part_size))
     all_ass = c(all_ass, ass)
     aris = c(aris, ari)
-    cat("Indexes : [", si, ":", si+part_size-1, " ] ari : [", ari, "] Execution Time : [", this_time, "] seconds.\n")
+    cat("<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc", mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n")
 }
 
-cat("Total Time of this stream : [", total_time, "] seconds, average ari : [", mean(na.omit(aris)), "]\n")
-total_ari = adjustedRandIndex(all_ass, head(t(lbls), length(all_ass)))
-cat("Total ari : [", total_ari, "]\n")
-cat("---\n")
-
-cat("========== V ==========\n")
+#cat("Total Time of this stream : [", total_time, "] seconds, average ari : [", mean(na.omit(aris)), "]\n")
+#total_ari = adjustedRandIndex(all_ass, head(t(lbls), length(all_ass)))
+#cat("Total ari : [", total_ari, "]\n")

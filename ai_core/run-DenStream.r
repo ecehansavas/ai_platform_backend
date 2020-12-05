@@ -11,10 +11,9 @@ lfname = args[2]
 k = as.numeric(args[3])
 epsilon = as.numeric(args[4])
 
-cat("========== ^ ==========\n")
-cat("New run of DenStream algorithm PART by PART at :")
+#cat("New run of DenStream algorithm PART by PART at :")
+#cat("---\n")
 Sys.time()
-cat("---\n")
 
 data_length = 50000
 
@@ -42,17 +41,16 @@ for(si in part_start_indexes)
     end = Sys.time()
     this_time = end - begin
     total_time = total_time + this_time
-    cat("Found Labels: " , ass, "\n")
-    cat("Real Labels : " , tail(head(t(lbls), si+part_size-1), part_size), "\n")
+    #cat("Found Labels: " , ass, "\n")
+    #cat("Real Labels : " , tail(head(t(lbls), si+part_size-1), part_size), "\n")
     ari = adjustedRandIndex(ass, tail(head(t(lbls), si+part_size-1), part_size))
     all_ass = c(all_ass, ass)
     aris = c(aris, ari)
-    cat("Indexes : [", si, ":", si+part_size-1, " ] ari : [", ari, "] Execution Time : [", this_time, "] seconds.\n")
+    # cat("Indexes : [", si, ":", si+part_size-1, " ] ari : [", ari, "] Execution Time : [", this_time, "] seconds.\n")
+    cat("<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc", mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n")
 }
 
-cat("Total Time of this stream : [", total_time, "] seconds, average ari : [", mean(na.omit(aris)), "]\n")
-total_ari = adjustedRandIndex(all_ass, head(t(lbls), length(all_ass)))
-cat("Total ari : [", total_ari, "]\n")
-cat("---\n")
+# cat("Total Time of this stream : [", total_time, "] seconds, average ari : [", mean(na.omit(aris)), "]\n")
+# total_ari = adjustedRandIndex(all_ass, head(t(lbls), length(all_ass)))
+# cat("Total ari : [", total_ari, "]\n")
 
-cat("========== V ==========\n")

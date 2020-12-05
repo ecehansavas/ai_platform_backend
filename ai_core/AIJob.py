@@ -45,7 +45,7 @@ class AIJob:
             used_dataset = prepareDataset(self.dataset_name, self.dataset_params)
             frame = pd.read_csv(used_dataset)
             headers = (frame).columns.tolist()
-            data_summary = pd.read_csv(used_dataset, index_col=0).describe().to_json()
+            data_summary = pd.read_csv(used_dataset).describe().to_json()
         
             stream = FileStream(used_dataset)
         stream.prepare_for_use()    
@@ -82,11 +82,11 @@ class AIJob:
             out = json.dumps( d3_result) 
         
         elif self.algorithm_name == "clustream":
-            clustream_result = run_clustream(used_dataset, self.algorithm_params)
+            clustream_result = run_clustream(used_dataset, self.algorithm_params, self.id)
             out = json.dumps(clustream_result)
         
         elif self.algorithm_name == "denstream":
-            denstream_result = run_denstream(used_dataset, self.algorithm_params)
+            denstream_result = run_denstream(used_dataset, self.algorithm_params, self.id)
             out = json.dumps(denstream_result)  
             
         else:
@@ -303,9 +303,9 @@ def run_d3(dataset_name,algo_params, jobid):
         driftPattern = re.compile("<DRIFT_START>(.*)<DRIFT_END>")
         accuracyPattern = re.compile("<ACCURACY_START>(.*),(.*),(.*)<ACCURACY_END>")
 
-        # TODO: do while yap
-        while process.poll() is None:
-            print("process polled")
+        condition = True
+        while condition:
+            print("D3 process is polled")
           
             for line in process.stdout:
                 drift_search_results = driftPattern.search(line.decode('utf-8'))
@@ -323,16 +323,20 @@ def run_d3(dataset_name,algo_params, jobid):
                     if len(accuracy)>0:
                         item={}
                         acc = accuracy[-1]
-                        item["acc"] = round(float(acc),4)
+                        item["accuracy"] = round(float(acc),4)
                         item["percentage"] = round(int(index)/int(data_length),1)
                         append_progress(jobid, item)
                         
                         results.clear()
                         for acc in accuracy:
                             item={}
-                            item["acc"] = round(float(acc),4)
+                            item["accuracy"] = round(float(acc),4)
                             item["percentage"] = round(int(index)/int(data_length),1)
                             results.append(item)
+            condition = process.poll() is None
+            if condition is False:
+                break
+
         
         drifted_items["drifted_items"] = drifts
         results.append(drifted_items)
@@ -341,91 +345,117 @@ def run_d3(dataset_name,algo_params, jobid):
     except subprocess.CalledProcessError as e:
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
 
-    # print("D3 algorithm results obtained: " + str(results))
+    #print("D3 algorithm results obtained: " + str(results))
     
     return results  
 
 
-# TODO: Sonuclari al
-def run_clustream(dataset_name,algo_params):
+# CluStream Algorithm 
+def run_clustream(dataset_name,algo_params,jobid):
     print("Running CluStream algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
 
     xfname="xfname.txt"
     lfname="lfname.txt"
-    all_data = pd.read_csv(dataset_name,header=None)
+    all_data = pd.read_csv(dataset_name)
 
     x = all_data.iloc[:,:-1]
     x.to_csv(xfname, index=False, header=None)
 
     labels = all_data[all_data.columns[-1]]
     labels.to_csv(lfname, index=False, header=None)
+
+    results = []
     
     try:
-        process = subprocess.run(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m'])], check=True, stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m'])], stdout=PIPE)
+        # pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
+
+        # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+            
+        condition = True
+        while condition:
+            print("Clustream process is polled")
+
+            for line in process.stdout: 
+                search_results = accuracy_pattern.search(line.decode("utf-8"))
+                if search_results:
+                    item={}
+                    item["start_index"] = search_results.group(1)
+                    item["stop_index"] = search_results.group(2)
+                    datalength = int(search_results.group(3))
+                    item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
+                    item["accuracy"] = round(float(search_results.group(4)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
+                    item["time"] = search_results.group(6)
+                    # print("received and parsed item: ", item)                 
+                    append_progress(jobid, item)
+                    results.append(item)
+            
+            condition = process.poll() is None
+            if condition is False:
+                break
+    
     except subprocess.CalledProcessError as e:
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
     
     print("Finished running CluStream")
-    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
-    search_results = pattern.search(process.stdout.decode("utf-8"))
-    clustream_results_json= search_results.group(1) 
-    clustream_results = json.loads(clustream_results_json)
-
-    x_array = clustream_results[0]
-    acc_array = clustream_results[1]
-
-    results = []
-
-    for i in range(0,len(x_array)):
-        item = {}
-        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
-        item["acc"] = float("{:.2f}".format(acc_array[i]))
-        results.insert(i,item)
-    
-    print("CluStream algorithm results obtained: " + str(results))
+    # print("CluStream algorithm results obtained: " + str(results))
     
     return results  
 
+
+
 # TODO: Sonuclari al
-def run_denstream(dataset_name,algo_params):
+def run_denstream(dataset_name,algo_params, jobid):
     print("Running DenStream algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
 
     xfname="xfname.txt"
     lfname="lfname.txt"
-    all_data = pd.read_csv(dataset_name,header=None)
+    all_data = pd.read_csv(dataset_name)
 
     x = all_data.iloc[:,:-1]
     x.to_csv(xfname, index=False, header=None)
 
     labels = all_data[all_data.columns[-1]]
     labels.to_csv(lfname, index=False, header=None)
+    results = []
     
     try:
-        process = subprocess.run(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon'])], check=True, stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon'])], stdout=PIPE)
+         # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+            
+        condition = True
+        while condition:
+            print("Denstream process is polled")
+
+            for line in process.stdout: 
+                search_results = accuracy_pattern.search(line.decode("utf-8"))
+                if search_results:
+                    item={}
+                    item["start_index"] = search_results.group(1)
+                    item["stop_index"] = search_results.group(2)
+                    datalength = int(search_results.group(3))
+                    item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
+                    item["accuracy"] = round(float(search_results.group(4)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
+                    item["time"] = search_results.group(6)
+                    # print("received and parsed item: ", item)                 
+                    append_progress(jobid, item)
+                    results.append(item)
+
+            condition = process.poll() is None
+            if condition is False:
+                break
+    
     except subprocess.CalledProcessError as e:
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
     
     print("Finished running DenStream")
-    pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
-    search_results = pattern.search(process.stdout.decode("utf-8"))
-    denstream_results_json= search_results.group(1) 
-    denstream_results = json.loads(denstream_results_json)
-
-    x_array = denstream_results[0]
-    acc_array = denstream_results[1]
-
-    results = []
-
-    for i in range(0,len(x_array)):
-        item = {}
-        item["data_percentage"] = float("{:.2f}".format(x_array[i]))
-        item["acc"] = float("{:.2f}".format(acc_array[i]))
-        results.insert(i,item)
-    
-    print("DenStream algorithm results obtained: " + str(results))
-    
+    #print("DenStream algorithm results obtained: " + str(results))
     return results  
 
 # ------------------- END OF ALGORITHMS
