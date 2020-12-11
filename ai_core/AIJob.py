@@ -87,7 +87,11 @@ class AIJob:
         
         elif self.algorithm_name == "denstream":
             denstream_result = run_denstream(used_dataset, self.algorithm_params, self.id)
-            out = json.dumps(denstream_result)  
+            out = json.dumps(denstream_result) 
+
+        elif self.algorithm_name == "streamkm":
+            streamkm_result = run_streamkm(used_dataset, self.algorithm_params, self.id)
+            out = json.dumps(streamkm_result) 
             
         else:
             print("algorithm not found")
@@ -368,9 +372,7 @@ def run_clustream(dataset_name,algo_params,jobid):
     results = []
     
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m'])], stdout=PIPE)
-        # pattern = re.compile("<RESULTS_START>(.*)<RESULTS_END>",re.MULTILINE)
-
+        process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m']), str(algo_params['part_size']),], stdout=PIPE)
         # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
@@ -407,7 +409,7 @@ def run_clustream(dataset_name,algo_params,jobid):
 
 
 
-# TODO: Sonuclari al
+# DenStream Algorithm
 def run_denstream(dataset_name,algo_params, jobid):
     print("Running DenStream algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
@@ -424,7 +426,7 @@ def run_denstream(dataset_name,algo_params, jobid):
     results = []
     
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon'])], stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size'])], stdout=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
@@ -456,6 +458,56 @@ def run_denstream(dataset_name,algo_params, jobid):
     
     print("Finished running DenStream")
     #print("DenStream algorithm results obtained: " + str(results))
+    return results  
+
+# StreamKM++ Algorithm
+def run_streamkm(dataset_name,algo_params, jobid):
+    print("Running Stream KM++ algorithm with dataset " + dataset_name)
+    print("Algorithm parameters: " + str(algo_params))
+
+    xfname="xfname.txt"
+    lfname="lfname.txt"
+    all_data = pd.read_csv(dataset_name)
+
+    x = all_data.iloc[:,:-1]
+    x.to_csv(xfname, index=False, header=None)
+
+    labels = all_data[all_data.columns[-1]]
+    labels.to_csv(lfname, index=False, header=None)
+    results = []
+    
+    try:
+        process = subprocess.Popen(['Rscript', "ai_core/run-StreamKm.r", xfname, lfname, str(algo_params['part_size']), str(algo_params['n_cluster']), str(algo_params['size_coreset'])], stdout=PIPE)
+         # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+            
+        condition = True
+        while condition:
+            print("StreamKM++ process is polled")
+
+            for line in process.stdout: 
+                search_results = accuracy_pattern.search(line.decode("utf-8"))
+                if search_results:
+                    item={}
+                    item["start_index"] = search_results.group(1)
+                    item["stop_index"] = search_results.group(2)
+                    datalength = int(search_results.group(3))
+                    item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
+                    item["accuracy"] = round(float(search_results.group(4)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
+                    item["time"] = search_results.group(6)             
+                    append_progress(jobid, item)
+                    results.append(item)
+
+            condition = process.poll() is None
+            if condition is False:
+                break
+    
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+    
+    print("Finished running StreamKM++")
+    #print("StreamKM++ algorithm results obtained: " + str(results))
     return results  
 
 # ------------------- END OF ALGORITHMS

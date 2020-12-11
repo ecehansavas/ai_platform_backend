@@ -2,8 +2,8 @@
    Streams    |  length  |  k |  d  | drift speed*         | bulunan drift sayisi
    -----------|----------|----|-----|----------------------|
 1  Drifted 1  |  50.000  | 10 | 50  | 100                  | 186 (data round edildi noktadan sonra 6 basamak olana kadar) / 4 basamak 188 drift (synthesised-drifted1-rounded.csv)
-2  Drifted 2  |  50.000  | 10 | 100 | 100                  |
-3  Drifted 3  |  50.000  | 10 | 10  | 100                  | 127 (data round edilmedi. synthesised-drifted3.csv)
+2  Drifted 3  |  50.000  | 10 | 100 | 100                  |
+3  Drifted 2  |  50.000  | 10 | 10  | 100                  | 127 (data round edilmedi. synthesised-drifted3.csv)
 4  Drifted 4  |  50.000  | 20 | 50  | 100                  |
 5  Drifted 5  |  50.000  | 4  | 50  | 100                  |
 6  Drifted 6  |  50.000  | 10 | 50  | 40   (high speed)    |

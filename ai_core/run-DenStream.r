@@ -10,6 +10,7 @@ xfname = args[1]
 lfname = args[2]
 k = as.numeric(args[3])
 epsilon = as.numeric(args[4])
+part_size =  as.numeric(args[5])
 
 #cat("New run of DenStream algorithm PART by PART at :")
 #cat("---\n")
@@ -17,7 +18,6 @@ Sys.time()
 
 data_length = 50000
 
-part_size = 100
 part_start_indexes = seq(1, (data_length-part_size+1), by=part_size)
 
 X = read.table(xfname, sep=",")
