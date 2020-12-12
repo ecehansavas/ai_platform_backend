@@ -475,9 +475,12 @@ def run_streamkm(dataset_name,algo_params, jobid):
     labels = all_data[all_data.columns[-1]]
     labels.to_csv(lfname, index=False, header=None)
     results = []
-    
+
+    #TODO: data length olayini cozmelisin
+    data_length = 50000
+
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-StreamKm.r", xfname, lfname, str(algo_params['part_size']), str(algo_params['n_cluster']), str(algo_params['size_coreset'])], stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-StreamKm.r", xfname, lfname, str(algo_params['part_size']), str(algo_params['n_cluster']), str(algo_params['size_coreset']), str(data_length)], stdout=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             

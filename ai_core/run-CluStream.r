@@ -11,11 +11,10 @@ lfname = args[2] # labels
 k = as.numeric(args[3])
 window_length = as.numeric( args[4])
 m = as.numeric(args[5])
-part_size =  as.numeric(args[6])
+part_size =  as.numeric(args[6]) # data process size
 
 data_length = 50000
 
-# datayi algoritmaya kacar kacar verecegi
 part_start_indexes = seq(1, (data_length-part_size+1), by=part_size)
 
 Sys.time()

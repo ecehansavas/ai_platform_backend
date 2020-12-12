@@ -10,7 +10,7 @@ xfname = args[1]
 lfname = args[2]
 k = as.numeric(args[3])
 epsilon = as.numeric(args[4])
-part_size =  as.numeric(args[5])
+part_size =  as.numeric(args[5]) # data process size
 
 #cat("New run of DenStream algorithm PART by PART at :")
 #cat("---\n")
