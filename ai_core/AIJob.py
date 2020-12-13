@@ -46,6 +46,8 @@ class AIJob:
             frame = pd.read_csv(used_dataset)
             headers = (frame).columns.tolist()
             data_summary = pd.read_csv(used_dataset).describe().to_json()
+            data_length =len(pd.read_csv(used_dataset))
+            print("data length: ", data_length)
         
             stream = FileStream(used_dataset)
         stream.prepare_for_use()    
@@ -61,11 +63,10 @@ class AIJob:
         elif self.algorithm_name =="knn":
             if('sample_size' in self.dataset_params):
                 sample_size = int(self.dataset_params['sample_size'])
+            elif('start_value' in self.dataset_params and 'stop_value' in self.dataset_params): 
+                sample_size = int(self.dataset_params['stop_value']) - int(self.dataset_params['start_value'])
             else:
                 sample_size = 300
-            if('start_value' in self.dataset_params): 
-                if('stop_value' in self.dataset_params): 
-                    sample_size = int(self.dataset_params['stop_value']) - int(self.dataset_params['start_value'])
                 
             knn_result = run_knn(getFile(self.id),stream, headers, sample_size, self.algorithm_params, self.evaluation, self.eval_params, self.id) 
             out = knn_result.to_json(orient='records')       
@@ -73,7 +74,10 @@ class AIJob:
         elif self.algorithm_name == "k_means":
             kmeans_result = run_kmeans(used_dataset, self.algorithm_params)
             data = pd.read_csv(self.dataset_name+".csv")
-            sub_data = data[int(self.dataset_params['start_value']):int(self.dataset_params['stop_value'])]
+            if('start_value' in self.dataset_params and 'stop_value'in self.dataset_params):
+                sub_data = data[int(self.dataset_params['start_value']):int(self.dataset_params['stop_value'])]
+            else:
+                sub_data=data
             res = sub_data.merge(pd.Series(kmeans_result).rename('cluster'), left_index=True, right_index=True)
             out = res.to_json(orient='records')
         
@@ -82,15 +86,15 @@ class AIJob:
             out = json.dumps( d3_result) 
         
         elif self.algorithm_name == "clustream":
-            clustream_result = run_clustream(used_dataset, self.algorithm_params, self.id)
+            clustream_result = run_clustream(used_dataset, self.algorithm_params, self.id, data_length)
             out = json.dumps(clustream_result)
         
         elif self.algorithm_name == "denstream":
-            denstream_result = run_denstream(used_dataset, self.algorithm_params, self.id)
+            denstream_result = run_denstream(used_dataset, self.algorithm_params, self.id, data_length)
             out = json.dumps(denstream_result) 
 
         elif self.algorithm_name == "streamkm":
-            streamkm_result = run_streamkm(used_dataset, self.algorithm_params, self.id)
+            streamkm_result = run_streamkm(used_dataset, self.algorithm_params, self.id, data_length)
             out = json.dumps(streamkm_result) 
             
         else:
@@ -355,10 +359,11 @@ def run_d3(dataset_name,algo_params, jobid):
 
 
 # CluStream Algorithm 
-def run_clustream(dataset_name,algo_params,jobid):
+def run_clustream(dataset_name,algo_params,jobid, data_length):
     print("Running CluStream algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
 
+    # splits the dataset X and the label files.
     xfname="xfname.txt"
     lfname="lfname.txt"
     all_data = pd.read_csv(dataset_name)
@@ -372,7 +377,7 @@ def run_clustream(dataset_name,algo_params,jobid):
     results = []
     
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m']), str(algo_params['part_size']),], stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m']), str(algo_params['part_size']), str(data_length)], stdout=PIPE)
         # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
@@ -410,10 +415,11 @@ def run_clustream(dataset_name,algo_params,jobid):
 
 
 # DenStream Algorithm
-def run_denstream(dataset_name,algo_params, jobid):
+def run_denstream(dataset_name,algo_params, jobid, data_length):
     print("Running DenStream algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
 
+    # splits the dataset X and the label files.
     xfname="xfname.txt"
     lfname="lfname.txt"
     all_data = pd.read_csv(dataset_name)
@@ -426,7 +432,7 @@ def run_denstream(dataset_name,algo_params, jobid):
     results = []
     
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size'])], stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size']), str(data_length)], stdout=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
@@ -461,10 +467,11 @@ def run_denstream(dataset_name,algo_params, jobid):
     return results  
 
 # StreamKM++ Algorithm
-def run_streamkm(dataset_name,algo_params, jobid):
+def run_streamkm(dataset_name,algo_params, jobid, data_length):
     print("Running Stream KM++ algorithm with dataset " + dataset_name)
     print("Algorithm parameters: " + str(algo_params))
 
+    # splits the dataset X and the label files.
     xfname="xfname.txt"
     lfname="lfname.txt"
     all_data = pd.read_csv(dataset_name)
@@ -475,9 +482,6 @@ def run_streamkm(dataset_name,algo_params, jobid):
     labels = all_data[all_data.columns[-1]]
     labels.to_csv(lfname, index=False, header=None)
     results = []
-
-    #TODO: data length olayini cozmelisin
-    data_length = 50000
 
     try:
         process = subprocess.Popen(['Rscript', "ai_core/run-StreamKm.r", xfname, lfname, str(algo_params['part_size']), str(algo_params['n_cluster']), str(algo_params['size_coreset']), str(data_length)], stdout=PIPE)
