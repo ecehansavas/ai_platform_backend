@@ -23,14 +23,12 @@ import pandas as pd
  
 
 class AIJob:
-    def __init__(self,id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params):
+    def __init__(self,id, dataset_name, algorithm_name, dataset_params, algorithm_params):
         self.id=id
         self.dataset_name = dataset_name
         self.algorithm_name = algorithm_name
         self.dataset_params = dataset_params
         self.algorithm_params = algorithm_params
-        self.evaluation = evaluation
-        self.eval_params = eval_params
  
     def runTheJob(self):
         headers = ""
@@ -52,8 +50,23 @@ class AIJob:
             stream = FileStream(used_dataset)
         stream.prepare_for_use()    
 
-        if self.algorithm_name == "hoeffding_tree":
-            basic_result = run_hoeffdingtree(getFile(self.id),stream, self.algorithm_params, self.evaluation, self.eval_params, self.id, self.dataset_params)
+        if self.algorithm_name == "hoeffding_tree_basic":
+            basic_result = run_hoeffdingtree_basic(getFile(self.id),stream, self.algorithm_params, self.id, self.dataset_params)
+            if(os.path.isfile(getFile(self.id))):
+                with open(getFile(self.id)) as file: 
+                    out = readAndParseResults(file)
+            else:
+                out = json.dumps(basic_result)
+        elif self.algorithm_name == "hoeffding_tree_prequential":
+            basic_result = run_hoeffdingtree_prequential(getFile(self.id),stream, self.algorithm_params, self.id, self.dataset_params)
+            if(os.path.isfile(getFile(self.id))):
+                with open(getFile(self.id)) as file: 
+                    out = readAndParseResults(file)
+            else:
+                out = json.dumps(basic_result)
+
+        elif self.algorithm_name == "hoeffding_tree_holdout":
+            basic_result = run_hoeffdingtree_holdout(getFile(self.id),stream, self.algorithm_params, self.id, self.dataset_params)
             if(os.path.isfile(getFile(self.id))):
                 with open(getFile(self.id)) as file: 
                     out = readAndParseResults(file)
@@ -68,7 +81,7 @@ class AIJob:
             else:
                 sample_size = 300
                 
-            knn_result = run_knn(getFile(self.id),stream, headers, sample_size, self.algorithm_params, self.evaluation, self.eval_params, self.id) 
+            knn_result = run_knn(getFile(self.id),stream, headers, sample_size, self.algorithm_params, self.id) 
             out = knn_result.to_json(orient='records')       
 
         elif self.algorithm_name == "k_means":
@@ -146,7 +159,7 @@ def run_kmeans(dataset_name, algo_params):
     return kmeans.fit_predict(data.values)
 
 
-def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, eval_params, jobid):
+def run_knn(resultFile, stream,headers, sample_size, algo_params, jobid):
     pretrain_size = int(algo_params['pretrain_size'])
     neighbors = int(algo_params['neighbors'])
     max_window_size = int(algo_params['max_window_size'])
@@ -223,8 +236,7 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, evaluation, ev
     
     return pd.DataFrame(data=result, columns=headers)
 
-
-def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params, jobid, dataset_params):
+def run_hoeffdingtree_basic(resultFile,stream,algo_params, jobid, dataset_params):
     ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
                       tie_threshold = float(algo_params['tie_threshold']),   
                       binary_split = bool(algo_params['binary_split']),
@@ -235,67 +247,89 @@ def run_hoeffdingtree(resultFile,stream,algo_params, evaluation, eval_params, jo
 
     print("Algo params: " + json.dumps(algo_params))
    
-    if evaluation=="holdout": 
-        evaluator = EvaluateHoldout(show_plot = False,
-                                    max_samples = int(eval_params['max_sample']),
-                                    n_wait = int(eval_params['n_wait']),
-                                    batch_size = int(eval_params['batch_size']),
-                                    metrics = ['accuracy', 'kappa','kappa_t'],
-                                    output_file = resultFile)
-        evaluator.evaluate(stream=stream, model=ht)
+ 
+    print("Basic evaluation")
+    # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
+    n_samples = 0
+    correct_cnt = 0
     
-   
-
-    elif evaluation=="prequential":
-        evaluator = EvaluatePrequential(show_plot = False,
-                                        pretrain_size = int(eval_params['pretrain_size']),
-                                        max_samples = int(eval_params['max_sample']),
-                                        batch_size = int(eval_params['batch_size']),
-                                        n_wait = int(eval_params['n_wait']),
-                                        metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
-                                        output_file = resultFile)
+    max_samples =  int(algo_params['max_sample'])
     
-        print("evaluate with pretrain size:" + str(eval_params['pretrain_size']) + 
-                " max sample:" + str(eval_params['max_sample']) + 
-                " batch size:" + str(eval_params['batch_size']) +
-                "n_wait:" + str(eval_params['n_wait']))
-
-        evaluator.evaluate(stream=stream, model=ht)
-
-    else:
-        print("Basic evaluation")
-        # https://scikit-multiflow.readthedocs.io/en/stable/api/generated/skmultiflow.trees.HoeffdingTreeClassifier.html?highlight=hoeffding
-        n_samples = 0
-        correct_cnt = 0
-       
-        max_samples =  300
-        if('start_value' in dataset_params): 
-            if('stop_value' in dataset_params): 
-                max_samples =  int(dataset_params['stop_value']) - int(dataset_params['start_value'])
+    # Train the estimator with the samples provided by the data stream
+    while n_samples < max_samples and stream.has_more_samples():
+        time.sleep(0.1)
+        X, y = stream.next_sample()
+        y_pred = ht.predict(X)
+        if y[0] == y_pred[0]:
+            correct_cnt += 1
+        ht = ht.partial_fit(X, y)
+        try:
+            print('{} samples analyzed.'.format(n_samples))
+            accuracy =  round((correct_cnt / n_samples),2)
+            print('Hoeffding Tree accuracy: {}'.format(correct_cnt / n_samples))
+            progress = {}
+            progress["n_samples"] = n_samples
+            progress["correct_cnt"] = correct_cnt
+            progress["accuracy"] = accuracy
+            append_progress(jobid, progress)
+        except ZeroDivisionError:
+            print("0")
         
-        # Train the estimator with the samples provided by the data stream
-        while n_samples < max_samples and stream.has_more_samples():
-            time.sleep(0.1)
-            X, y = stream.next_sample()
-            y_pred = ht.predict(X)
-            if y[0] == y_pred[0]:
-                correct_cnt += 1
-            ht = ht.partial_fit(X, y)
-            try:
-                print('{} samples analyzed.'.format(n_samples))
-                accuracy =  round((correct_cnt / n_samples),2)
-                print('Hoeffding Tree accuracy: {}'.format(correct_cnt / n_samples))
-                progress = {}
-                progress["n_samples"] = n_samples
-                progress["correct_cnt"] = correct_cnt
-                progress["accuracy"] = accuracy
-                append_progress(jobid, progress)
-            except ZeroDivisionError:
-                print("0")
-           
-            n_samples += 1
-       
-        return progress
+        n_samples += 1
+    
+    return progress
+
+def run_hoeffdingtree_prequential(resultFile,stream,algo_params, jobid, dataset_params):
+    ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
+                      tie_threshold = float(algo_params['tie_threshold']),   
+                      binary_split = bool(algo_params['binary_split']),
+                      remove_poor_atts = bool(algo_params['remove_poor_atts']),
+                      no_preprune = bool(algo_params['no_preprune']),
+                      leaf_prediction = str(algo_params['leaf_prediction']),
+                      nb_threshold = int(algo_params['nb_threshold']))
+
+    print("Algo params: " + json.dumps(algo_params))
+   
+  
+    evaluator = EvaluateHoldout(show_plot = False,
+                                max_samples = int(algo_params['max_sample']),
+                                n_wait = int(algo_params['n_wait']),
+                                batch_size = int(algo_params['batch_size']),
+                                metrics = ['accuracy', 'kappa','kappa_t'],
+                                output_file = resultFile)
+    evaluator.evaluate(stream=stream, model=ht)
+
+    print("evaluate with max sample:" + str(algo_params['max_sample']) + 
+            " batch size:" + str(algo_params['batch_size']) +
+            "n_wait:" + str(algo_params['n_wait']))
+
+    evaluator.evaluate(stream=stream, model=ht)
+
+def run_hoeffdingtree_holdout(resultFile,stream,algo_params, jobid, dataset_params):
+    ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
+                      tie_threshold = float(algo_params['tie_threshold']),   
+                      binary_split = bool(algo_params['binary_split']),
+                      remove_poor_atts = bool(algo_params['remove_poor_atts']),
+                      no_preprune = bool(algo_params['no_preprune']),
+                      leaf_prediction = str(algo_params['leaf_prediction']),
+                      nb_threshold = int(algo_params['nb_threshold']))
+
+    print("Algo params: " + json.dumps(algo_params))
+   
+    evaluator = EvaluatePrequential(show_plot = False,
+                                    pretrain_size = int(algo_params['pretrain_size']),
+                                    max_samples = int(algo_params['max_sample']),
+                                    batch_size = int(algo_params['batch_size']),
+                                    n_wait = int(algo_params['n_wait']),
+                                    metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
+                                    output_file = resultFile)
+
+    print("evaluate with pretrain size:" + str(algo_params['pretrain_size']) + 
+            " max sample:" + str(algo_params['max_sample']) + 
+            " batch size:" + str(algo_params['batch_size']) +
+            "n_wait:" + str(algo_params['n_wait']))
+
+    evaluator.evaluate(stream=stream, model=ht)
 
     
 # eren: explain how do we handle the D3 algorithm

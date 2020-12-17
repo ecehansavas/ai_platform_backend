@@ -13,9 +13,9 @@ def index(request):
 def jobs_list(request):
     MAX_OBJECTS = 50
     jobs = Job.objects.all()[:MAX_OBJECTS]
-    data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name","evaluation"
+    data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name"
     ,"state","created_at","started_at","updated_at","finished_at"
-    ,"dataset_params", "algorithm_params","evaluation_params","results", "data_summary", "progress"))}
+    ,"dataset_params", "algorithm_params","results", "data_summary", "progress"))}
     return JsonResponse(data)
 
 @csrf_exempt
@@ -25,7 +25,6 @@ def get_job(request, id):
         "id": job.id,
         "dataset_name": job.dataset_name,
         "algorithm_name": job.algorithm_name,
-        "evaluation": job.evaluation,
         "state":job.state,
         "created_at": job.created_at,
         "started_at": job.started_at,
@@ -33,7 +32,6 @@ def get_job(request, id):
         "finished_at": job.finished_at,
         "dataset_params": job.dataset_params, 
         "algorithm_params": job.algorithm_params,
-        "evaluation_params": job.evaluation_params,
         "results": job.results,
         "data_summary": job.data_summary,
         "progress": job.progress
@@ -50,10 +48,8 @@ def new_job(request):
     job = Job()
     job.dataset_name = body['dataset_name']
     job.algorithm_name= body['algorithm_name']
-    job.evaluation = body['selected_evaluation']
     job.dataset_params = body['dataset_parameters']
     job.algorithm_params = body['algorithm_parameters']
-    job.evaluation_params = body['evaluation_parameters']
     job.results ={}
     job.data_summary = {}
     job.progress = {}

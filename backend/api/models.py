@@ -10,7 +10,6 @@ class Job(models.Model):
     ]
     dataset_name = models.CharField(max_length=50)
     algorithm_name = models.CharField(max_length=50)
-    evaluation = models.CharField(max_length=50, default='prequential')
     state = models.CharField(max_length=50, default="queued", choices=STATES)
     created_at = models.DateTimeField('date created', auto_now_add=True)
     started_at = models.DateTimeField('date started', null=True)
@@ -18,7 +17,6 @@ class Job(models.Model):
     finished_at = models.DateTimeField('date finished', null=True)
     dataset_params = JSONField()
     algorithm_params = JSONField()
-    evaluation_params = JSONField(default=dict)
     results = JSONField()
     data_summary = JSONField(default=dict)
     progress = JSONField(default=dict)

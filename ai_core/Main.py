@@ -20,18 +20,16 @@ def main():
 
         # eren: you can create a seperate file for all DB access operations and move all DB actions there. That would clean up the code a lot
         # send a SQL query to see if there's a task in queue
-        cur.execute("SELECT id, dataset_name, algorithm_name, evaluation, state, created_at, started_at, updated_at, finished_at, dataset_params, algorithm_params, evaluation_params FROM api_job WHERE state='queued' ORDER BY created_at LIMIT 1")
+        cur.execute("SELECT id, dataset_name, algorithm_name, state, created_at, started_at, updated_at, finished_at, dataset_params, algorithm_params FROM api_job WHERE state='queued' ORDER BY created_at LIMIT 1")
         result = cur.fetchone()
 
         # if so, update the task to in progres...
         if result :
             id = result[0]
             dataset_name  = result [1]
-            dataset_params = result[9]
+            dataset_params = result[8]
             algorithm_name = result[2]
-            algorithm_params = result[10]          
-            evaluation = result[3]
-            eval_params = result[11]
+            algorithm_params = result[9] 
 
             print("Starting processing job with id: " + str(id))
 
@@ -39,8 +37,8 @@ def main():
             conn.commit()
 
             try:
-                # run the evaluation with the given dataset, params, algo, etc.
-                ai_job = AIJob(id, dataset_name, algorithm_name, dataset_params, algorithm_params, evaluation, eval_params)
+                # run the process with the given dataset, params, algo, etc.
+                ai_job = AIJob(id, dataset_name, algorithm_name, dataset_params, algorithm_params)
                 results, data_summary = ai_job.runTheJob()
         
                 # update json results
