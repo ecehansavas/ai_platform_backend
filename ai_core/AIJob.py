@@ -2,7 +2,7 @@ from skmultiflow.data import FileStream
 from skmultiflow.data import SEAGenerator
 from skmultiflow.data import HyperplaneGenerator
 from skmultiflow.trees import HoeffdingTree
-from skmultiflow.lazy.knn import KNN
+from skmultiflow.lazy import KNNClassifier
 from skmultiflow.evaluation import EvaluatePrequential
 from skmultiflow.evaluation import EvaluateHoldout
 from sklearn.cluster import KMeans
@@ -46,9 +46,15 @@ class AIJob:
             data_summary = pd.read_csv(used_dataset).describe().to_json()
             data_length =len(pd.read_csv(used_dataset))
             print("data length: ", data_length)
-        
-            stream = FileStream(used_dataset)
-        stream.prepare_for_use()    
+            
+            if(self.dataset_name =="kdd99_full_labeled-text"):
+                categories = ["icmp", "tcp", "udp", "auth","bgp", "courier","csnet_cs","ctf","daytime","discard","domain","domain_u","echo","eco_i",
+            "ecr_i","efs","exec","finger","ftp","ftp_data","gopher","hostnames", "http","http_443","imap4","IRC","iso_tsap","klogin"]
+            else: 
+                categories=[]
+
+            stream = FileStream(used_dataset, cat_features=categories,allow_nan=True)
+        # stream.prepare_for_use()    
 
         if self.algorithm_name == "hoeffding_tree_basic":
             basic_result = run_hoeffdingtree_basic(getFile(self.id),stream, self.algorithm_params, self.id, self.dataset_params)
@@ -79,7 +85,7 @@ class AIJob:
             elif('start_value' in self.dataset_params and 'stop_value' in self.dataset_params): 
                 sample_size = int(self.dataset_params['stop_value']) - int(self.dataset_params['start_value'])
             else:
-                sample_size = 300
+                sample_size = data_length
                 
             knn_result = run_knn(getFile(self.id),stream, headers, sample_size, self.algorithm_params, self.id) 
             out = knn_result.to_json(orient='records')       
@@ -131,7 +137,7 @@ def hyperPlaneGeneratorStream(dataset_params):
 
 def seaGenaratorStream(dataset_params):
     return SEAGenerator(classification_function = 0, 
-                        random_state = None, 
+                        random_state = 50, 
                         balance_classes = False, 
                         noise_percentage = float(dataset_params['noise_percentage']))
 
@@ -171,10 +177,9 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, jobid):
 
     print("Received %d samples by using pretrain size %d" % (len(X), pretrain_size))
 
-    knn = KNN(n_neighbors = neighbors,
+    knn = KNNClassifier(n_neighbors = neighbors,
               max_window_size = max_window_size, 
-              leaf_size = leaf_size,
-              nominal_attributes = None)
+              leaf_size = leaf_size)
 
     print("Created knn model with %d neighbors. max_windows_size %d and lead_size %d." % (neighbors, max_window_size, leaf_size))
 
@@ -279,7 +284,7 @@ def run_hoeffdingtree_basic(resultFile,stream,algo_params, jobid, dataset_params
     
     return progress
 
-def run_hoeffdingtree_prequential(resultFile,stream,algo_params, jobid, dataset_params):
+def run_hoeffdingtree_holdout(resultFile,stream,algo_params, jobid, dataset_params):
     ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
                       tie_threshold = float(algo_params['tie_threshold']),   
                       binary_split = bool(algo_params['binary_split']),
@@ -305,7 +310,7 @@ def run_hoeffdingtree_prequential(resultFile,stream,algo_params, jobid, dataset_
 
     evaluator.evaluate(stream=stream, model=ht)
 
-def run_hoeffdingtree_holdout(resultFile,stream,algo_params, jobid, dataset_params):
+def run_hoeffdingtree_prequential(resultFile,stream,algo_params, jobid, dataset_params):
     ht = HoeffdingTree(grace_period = int(algo_params['grace_period']),
                       tie_threshold = float(algo_params['tie_threshold']),   
                       binary_split = bool(algo_params['binary_split']),
@@ -413,7 +418,7 @@ def run_clustream(dataset_name,algo_params,jobid, data_length):
     try:
         process = subprocess.Popen(['Rscript', "ai_core/run-CluStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['horizon']), str(algo_params['m']), str(algo_params['part_size']), str(data_length)], stdout=PIPE)
         # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
-        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) pur (.*) meanpur (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
         condition = True
         while condition:
@@ -428,8 +433,10 @@ def run_clustream(dataset_name,algo_params,jobid, data_length):
                     datalength = int(search_results.group(3))
                     item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
                     item["accuracy"] = round(float(search_results.group(4)),4)
-                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
-                    item["time"] = search_results.group(6)
+                    item["purity"] = round(float(search_results.group(5)),4)
+                    item["mean_purity"] = round(float(search_results.group(6)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(7)),4)
+                    item["time"] = search_results.group(8)
                     # print("received and parsed item: ", item)                 
                     append_progress(jobid, item)
                     results.append(item)
@@ -468,13 +475,14 @@ def run_denstream(dataset_name,algo_params, jobid, data_length):
     try:
         process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size']), str(data_length)], stdout=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
-        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) pur (.*) meanpur (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
         condition = True
         while condition:
             print("Denstream process is polled")
 
             for line in process.stdout: 
+                # print(line)
                 search_results = accuracy_pattern.search(line.decode("utf-8"))
                 if search_results:
                     item={}
@@ -483,8 +491,10 @@ def run_denstream(dataset_name,algo_params, jobid, data_length):
                     datalength = int(search_results.group(3))
                     item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
                     item["accuracy"] = round(float(search_results.group(4)),4)
-                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
-                    item["time"] = search_results.group(6)
+                    item["purity"] = round(float(search_results.group(5)),4)
+                    item["mean_purity"] = round(float(search_results.group(6)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(7)),4)
+                    item["time"] = search_results.group(8)
                     # print("received and parsed item: ", item)                 
                     append_progress(jobid, item)
                     results.append(item)
@@ -520,7 +530,7 @@ def run_streamkm(dataset_name,algo_params, jobid, data_length):
     try:
         process = subprocess.Popen(['Rscript', "ai_core/run-StreamKm.r", xfname, lfname, str(algo_params['part_size']), str(algo_params['n_cluster']), str(algo_params['size_coreset']), str(data_length)], stdout=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
-        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) meanacc (.*) time (.*) <ACCURACY_END>")
+        accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) pur (.*) meanpur (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
         condition = True
         while condition:
@@ -535,8 +545,10 @@ def run_streamkm(dataset_name,algo_params, jobid, data_length):
                     datalength = int(search_results.group(3))
                     item["percentage"] = round(int(search_results.group(2))/int(datalength),2)
                     item["accuracy"] = round(float(search_results.group(4)),4)
-                    item["mean_accuracy"] = round(float(search_results.group(5)),4)
-                    item["time"] = search_results.group(6)             
+                    item["purity"] = round(float(search_results.group(5)),4)
+                    item["mean_purity"] = round(float(search_results.group(6)),4)
+                    item["mean_accuracy"] = round(float(search_results.group(7)),4)
+                    item["time"] = search_results.group(8)             
                     append_progress(jobid, item)
                     results.append(item)
 
