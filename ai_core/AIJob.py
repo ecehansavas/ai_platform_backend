@@ -80,12 +80,11 @@ class AIJob:
                 out = json.dumps(basic_result)
         
         elif self.algorithm_name =="knn":
-            if('sample_size' in self.dataset_params):
-                sample_size = int(self.dataset_params['sample_size'])
-            elif('start_value' in self.dataset_params and 'stop_value' in self.dataset_params): 
-                sample_size = int(self.dataset_params['stop_value']) - int(self.dataset_params['start_value'])
-            else:
-                sample_size = data_length
+            # if('start_value' in self.dataset_params and 'stop_value' in self.dataset_params): 
+            #     sample_size = int(self.dataset_params['stop_value']) - int(self.dataset_params['start_value'])
+            # else:
+            #     sample_size = data_length
+            sample_size = 1000
                 
             knn_result = run_knn(getFile(self.id),stream, headers, sample_size, self.algorithm_params, self.id) 
             out = knn_result.to_json(orient='records')       
@@ -213,10 +212,10 @@ def run_knn(resultFile, stream,headers, sample_size, algo_params, jobid):
        
         try:
             accuracy = round((corrects / (n_samples+1)),2)
-            print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: {}' .format(accuracy))
+            #print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: {}' .format(accuracy))
         except ZeroDivisionError:
             accuracy = 0
-            print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: 0' )
+            #print('{} KNN samples analyzed '.format(n_samples) + ' accuracy: 0' )
 
         progress = {}
         progress["n_samples"] = n_samples
@@ -300,7 +299,7 @@ def run_hoeffdingtree_holdout(resultFile,stream,algo_params, jobid, dataset_para
                                 max_samples = int(algo_params['max_sample']),
                                 n_wait = int(algo_params['n_wait']),
                                 batch_size = int(algo_params['batch_size']),
-                                metrics = ['accuracy', 'kappa','kappa_t'],
+                                metrics = ['accuracy', 'kappa'],
                                 output_file = resultFile)
     evaluator.evaluate(stream=stream, model=ht)
 
@@ -326,7 +325,7 @@ def run_hoeffdingtree_prequential(resultFile,stream,algo_params, jobid, dataset_
                                     max_samples = int(algo_params['max_sample']),
                                     batch_size = int(algo_params['batch_size']),
                                     n_wait = int(algo_params['n_wait']),
-                                    metrics = ['accuracy', 'kappa','kappa_t','kappa_m','true_vs_predicted'],
+                                    metrics = ['accuracy', 'kappa','true_vs_predicted'],
                                     output_file = resultFile)
 
     print("evaluate with pretrain size:" + str(algo_params['pretrain_size']) + 
@@ -473,7 +472,7 @@ def run_denstream(dataset_name,algo_params, jobid, data_length):
     results = []
     
     try:
-        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size']), str(data_length)], stdout=PIPE)
+        process = subprocess.Popen(['Rscript', "ai_core/run-DenStream.r", xfname, lfname, str(algo_params['class']), str(algo_params['epsilon']), str(algo_params['part_size']), str(data_length)], stdout=PIPE, stderr=PIPE)
          # "<ACCURACY_START>",si, ":", si+part_size-1, "datalength:", data_length, "acc", ari, "meanacc",mean(na.omit(aris)), "time", total_time,"<ACCURACY_END>\n"
         accuracy_pattern = re.compile("<ACCURACY_START> (.*) : (.*) datalength: (.*) acc (.*) pur (.*) meanpur (.*) meanacc (.*) time (.*) <ACCURACY_END>")
             
@@ -498,6 +497,10 @@ def run_denstream(dataset_name,algo_params, jobid, data_length):
                     # print("received and parsed item: ", item)                 
                     append_progress(jobid, item)
                     results.append(item)
+            
+            # for l in process.stderr:
+            #     print('err')
+            #     print(l)
 
             condition = process.poll() is None
             if condition is False:
@@ -507,6 +510,7 @@ def run_denstream(dataset_name,algo_params, jobid, data_length):
         raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
     
     print("Finished running DenStream")
+    
     #print("DenStream algorithm results obtained: " + str(results))
     return results  
 

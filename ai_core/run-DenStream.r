@@ -14,12 +14,7 @@ epsilon = as.numeric(args[4])
 part_size =  as.numeric(args[5]) # data process size
 data_length = as.numeric(args[6])
 
-#cat("New run of DenStream algorithm PART by PART at :")
-#cat("---\n")
 Sys.time()
-
-
-
 part_start_indexes = seq(1, (data_length-part_size+1), by=part_size)
 
 X = read.table(xfname, sep=",")
@@ -27,6 +22,16 @@ lbls = read.table(lfname)
 lbls = t(lbls)
 streammem = DSD_Memory(x=X, class=lbls, description="memo desc", loop=TRUE)
 denstream = DSC_DenStream(epsilon=epsilon, k=k)
+
+# covtype purity vs. lambda
+# denstream = DSC_DenStream(initPoints = 1000, mu=1, epsilon=0.02, processingSpeed=100, beta = 0.2, lambda = 0.25, k=k)
+# covtype purity vs. beta
+#denstream = DSC_DenStream(initPoints = 1000, mu=1, epsilon=0.02, processingSpeed=1000, beta = 0.2, lambda = 0.25, k=k)
+
+# electricity purity vs. lambda
+# denstream = DSC_DenStream(initPoints = 500, mu=1, epsilon=0.02, processingSpeed=100, beta = 0.2, lambda = 0.25, k=k)
+# electricity purity vs. beta
+# denstream = DSC_DenStream(initPoints = 500, mu=1, epsilon=0.02, processingSpeed=1000, beta = 0.8, lambda = 0.25, k=k)
 
 all_ass = c()
 reset_stream(streammem, pos = 1)
@@ -41,17 +46,16 @@ for(si in part_start_indexes)
     
     ass = get_assignment(denstream, tail(head(X, si+part_size-1), part_size), type = "macro")
     ass[is.na(ass)] = -1
-   
     end = Sys.time()
     this_time = end - begin
     total_time = total_time + this_time
     real_labels = tail(head(t(lbls), si+part_size-1), part_size)
-    #cat("Found Labels: " , ass, "\n")
-    #cat("Real Labels : " , real_labels, "\n")
+    # cat("Found Labels: " , ass, "\n")
+    # cat("Real Labels : " , real_labels, "\n")
     ari = adjustedRandIndex(ass, real_labels)
     pur = purity(real_labels, ass)
     pur = pur[[1]]
-    #cat("Purity : " , pur, "\n")
+    # cat("Purity : " , pur, "\n")
     purr = c(purr,pur)
     all_ass = c(all_ass, ass)
     aris = c(aris, ari)
