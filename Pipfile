@@ -10,9 +10,6 @@ django = "*"
 dj-database-url = "*"
 psycopg2-binary = "*"
 django-cors-headers = "*"
-numpy = "*"
-scikit-multiflow = "*"
-pandas = "*"
 gunicorn = "*"
 
 [requires]
