@@ -127,3 +127,18 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 CORS_ORIGIN_ALLOW_ALL = True
+
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+STATICFILE_DIRS = [
+      "static/images", 
+      "static/css", 
+      "staticfiles",]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+ALLOWED_HOSTS = ['estra-backend.herokuapp.com']
+DEBUG = True
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(file)))
