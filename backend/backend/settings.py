@@ -85,7 +85,6 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # }
 DATABASES = {}
 DATABASES['default'] = dj_database_url.config(conn_max_age=600)
-print(str(DATABASES), flush=True)
 
 
 # Password validation
@@ -141,4 +140,3 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 ALLOWED_HOSTS = ['estra-backend.herokuapp.com']
 DEBUG = True
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(file)))
