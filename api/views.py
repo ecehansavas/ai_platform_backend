@@ -12,7 +12,7 @@ def index(request):
 @csrf_exempt
 def jobs_list(request):
     MAX_OBJECTS = 50
-    jobs = Job.objects.all()[:MAX_OBJECTS]
+    jobs = Job.objects.all().order_by('-created_at')[:MAX_OBJECTS]
     data = {"jobs": list(jobs.values("id","dataset_name","algorithm_name"
     ,"state","created_at","started_at","updated_at","finished_at"
     ,"dataset_params", "algorithm_params","results", "data_summary", "progress"))}

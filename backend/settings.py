@@ -138,5 +138,5 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-ALLOWED_HOSTS = ['estra-backend.herokuapp.com']
+ALLOWED_HOSTS = ['estra-backend.herokuapp.com', "localhost"]
 DEBUG = True
